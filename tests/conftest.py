@@ -36,7 +36,10 @@ class DummyLane:
     def get_aligner_input_filenames(self):
         return [self.filename, None]        
 
+    def prepare_input(self):
+        return []
 
+        
 @pytest.fixture
 def raw_lane():
     return DummyLane("TestSample", Path(__file__).parent.parent / "data" / "test.fastq")

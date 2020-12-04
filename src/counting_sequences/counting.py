@@ -92,7 +92,11 @@ class SequenceCounter():
         self.dependencies = dependencies
 
     def get_dependencies(self):
-        return self.dependencies + [ppg.FileTimeInvariant(self.sequence_file_path)]
+        return self.dependencies + [
+            ppg.FileTimeInvariant(self.sequence_file_path), 
+            ppg.FunctionInvariant(f"{self.name}_write_predefined_sequences", self.write_predefined_sequences),
+            ppg.FunctionInvariant(f"{self.name}_count_fastq", self.count_fastq)
+            ]
 
     def write_predefined_sequences(self):
         outputfile = self.result_dir / "predefined_sequences.tsv"
@@ -109,21 +113,24 @@ class SequenceCounter():
             index_function = self._get_index_function()
             df_sequence_df = df_sequence_df.rename(columns={"Sequence": "Full Sequence"})
             sequences = []
+            deduplicated = []
             seen = collections.defaultdict(set)
             for _, row in df_sequence_df.iterrows():
                 fullseq = row["Full Sequence"]
+                deduplicated.append(fullseq not in seen)
                 seen[fullseq].add(row["Name"])
                 index1 = index_function(fullseq)
                 index2 = index1 + min(len(fullseq), self.trimmed_length)
                 seq = fullseq[index1:index2]
                 sequences.append(seq)
             df_sequence_df["Sequence"] = sequences
+            df_sequence_df["Deduplicated"] = deduplicated
             duplicates = []
             dup_names = []
             for seq in df_sequence_df["Full Sequence"].values:
                 dups = seen[seq]
+                dup_names.append(";".join(list(dups)))
                 duplicates.append(len(dups) > 1)
-                dup_names.append(",".join(list(dups)))
             df_sequence_df["Duplicate"] = duplicates
             df_sequence_df["Duplicate Entries"] = dup_names
             df_sequence_df.to_csv(outputfile, sep="\t", index=False)
@@ -152,7 +159,7 @@ class SequenceCounter():
             df_counter = self.count_fastq(raw_lane)
             df_counter.to_csv(output_file, sep="\t", index=False)
 
-        return ppg.FileGeneratingJob(output_file, __write).depends_on(dependencies).depends_on(self.dependencies)
+        return ppg.FileGeneratingJob(output_file, __write).depends_on(dependencies).depends_on(self.dependencies).depends_on(raw_lane.prepare_input())
 
     def count_fastq(self, raw_lane: Sample):
         """
@@ -198,7 +205,10 @@ class SequenceCounter():
         return ppg.MultiFileGeneratingJob([output_file, output_file2], __write).depends_on(
             self.write_fastq_count_trimmed(raw_lane)).depends_on(
                 self.write_fastq_count(raw_lane)).depends_on(self.dependencies).depends_on(
-                    self.write_predefined_sequences())
+                    self.write_predefined_sequences()).depends_on(
+                        raw_lane.prepare_input()).depends_on(self.get_dependencies()).depends_on(
+                            ppg.FunctionInvariant(f"{self.name}_count_samples_fast", self.count_samples_fast)
+                        )
 
     def write_fastq_count_trimmed(self, raw_lane: Sample):
         """
@@ -233,7 +243,7 @@ class SequenceCounter():
                 {"Sequence": list(counter.keys()), "Count": list(counter.values())})
             df.to_csv(output_file, sep="\t")
 
-        return FileGeneratingJob(output_file, __write).depends_on(self.write_fastq_count(raw_lane)).depends_on(self.dependencies)
+        return FileGeneratingJob(output_file, __write).depends_on(self.write_fastq_count(raw_lane)).depends_on(self.dependencies).depends_on(raw_lane.prepare_input())
 
     def _find_index(self, sequence):
         index1 = sequence.find(self.start_seq_to_trim)
@@ -270,7 +280,7 @@ class SequenceCounter():
         Returns
         -------
         pandas.DataFrame
-            Dataframe containing the counted sequences and additional 
+            Dataframe containing the counted sequences and additional
             information.
         """
 
@@ -297,6 +307,9 @@ class SequenceCounter():
             "WT Codon": [],
             "New AA": [],
             "Original AA": [],
+            "Deduplicated": [],
+            "Duplicate": [],
+            "Duplicate Entries": []
         }
         fn1 = raw_lane.get_aligner_input_filenames()[0]
         total_counts = count_raw_input_reads(str(fn1))
@@ -320,6 +333,9 @@ class SequenceCounter():
             to_df["WT Codon"].append(row["WT Codon"]),
             to_df["New AA"].append(row["New AA"]),
             to_df["Original AA"].append(row["Original AA"])
+            to_df["Deduplicated"].append(row["Deduplicated"]),
+            to_df["Duplicate"].append(row["Duplicate"]),
+            to_df["Duplicate Entries"].append(row["Duplicate Entries"])
         df_ret = pd.DataFrame(to_df)
         df_ret["Name"] = pd.Categorical(df_ret["Name"], categories=row_order)
         columns_in_order = [
@@ -337,6 +353,9 @@ class SequenceCounter():
             "WT Codon",
             "New AA",
             "Original AA",
+            "Deduplicated",
+            "Duplicate",
+            "Duplicate Entries"
         ]
         df_ret = df_ret[columns_in_order]
         df_ret = df_ret.sort_values("Name")
@@ -369,6 +388,35 @@ class SequenceCounter():
         predefined = set(predefines)
         trimmed = set(predefined_trimmed)
         assert len(predefined) == len(trimmed)
+
+    def generate_fastq_from_unmatched(self, raw_lane: Sample) -> FileGeneratingJob:
+        """
+        Generates a fastq for the unmatched files.
+
+        The resulting fastq contains each unmatched read once. This can then be aligned and
+        viewed in a browser to check what is exactly there.
+
+        Parameters
+        ----------
+        raw_lane : Sample
+            The sample for which we run the unmatched sequences.
+
+        Returns
+        -------
+        FileGeneratingJob
+            The job generating the fastq.
+        """
+        infile = self.result_dir / f"{raw_lane.name}_{self.name}_sequence_count_unmatched.tsv"
+        outfile = self.result_dir / f"{raw_lane.name}_{self.name}_sequence_count_unmatched.fastq"
+
+        def __dump_fastq():
+            df = pd.read_csv(infile, sep="\t")
+            df.index = df["Name"]
+            with outfile.open("w") as outp:
+                for name, row in df.iterrows():
+                    outp.write(f"@{name}_{row['Read Count']}\n{row['Sequence']}\n+\n{'F'*len(row['Sequence'])}\n")
+
+        return ppg.FileGeneratingJob(outfile, __dump_fastq).depends_on(self.write_count_table(raw_lane)).depends_on(self.dependencies).depends_on(self.get_dependencies())
 
 
 def grep_unmatched_reads(output_file, raw_lane, df_file, dependencies=[]):

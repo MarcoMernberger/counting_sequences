@@ -42,6 +42,14 @@ def test_write_trim_predefines(tmpdir, scouter):
     df = pd.read_csv(outputfile, sep="\t")
     scouter.assert_predefined(df["Full Sequence"].values, df["Sequence"].values)
     assert outputfile.exists()
+    df_new = pd.read_csv(outputfile, sep="\t")
+    df_new.index = df_new["Name"]
+    print(df.head())
+    assert df_new.loc["1>A_test3"]["Duplicate"]
+    assert df_new.loc["1>A_test4"]["Duplicate"]
+    assert df_new.loc["1>A_test3"]["Deduplicated"]
+    assert not df_new.loc["1>A_test4"]["Deduplicated"]
+    assert df_new.loc["1>A_test3"]["Duplicate Entries"] == "1>A_test3;1>A_test4"
 
 
 @pytest.mark.usefixtures("new_pipegraph_no_qc")
@@ -224,3 +232,4 @@ def test_count_samples_fast(tmpdir, raw_lane, scouter):
     }
     for _, row in df_predefined.iterrows():
         assert df.loc[row["Name"]]["Read Count"] == expected[row["Name"]]
+    
