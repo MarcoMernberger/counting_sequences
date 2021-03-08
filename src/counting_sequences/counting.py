@@ -33,6 +33,22 @@ def count_raw_input_reads(gz_filename1):
     return x
 
 
+def combine(inputfiles, outfile, dependencies):
+    Path(outfile).parent.mkdir(parents=True, exist_ok=True)
+
+    def dump():
+        concats = []
+        for sample_name in inputfiles:
+            fileobj = inputfiles[sample_name]
+            df = pd.read_csv(str(fileobj), sep="\t")
+            df.insert(0, "Sample", [sample_name] * len(df))
+            concats.append(df)
+        df_ret = pd.concat(concats)
+        df_ret.to_csv(outfile, sep="\t", index=False)
+
+    return ppg.MultiFileGeneratingJob([outfile], dump).depends_on(dependencies)
+
+
 class SequenceCounter:
     """
     Trims reads from fastqs and compares them to a set of predefined sequences
@@ -65,7 +81,8 @@ class SequenceCounter:
         self,
         sequence_file_path: str,
         name: str = None,
-        start_seq_to_trim: Optional[str] = None,
+        start_seq_to_trim_reads: Optional[str] = None,
+        start_seq_to_trim_predefined: Optional[str] = None,
         trimmed_length: int = None,
         result_folder: str = "results/counts",
         dependencies=[],
@@ -82,8 +99,10 @@ class SequenceCounter:
             Path to .tsv file containing the predefined sequences to count.
         name : str, optional
             A unique name, by default None.
-        start_seq_to_trim : Optional[str], optional
-            Start sequence for trimming, by default None.
+        start_seq_to_trim_reads : Optional[str], optional
+            Start sequence for trimming reads, by default None.
+        start_seq_to_trim_predefined : Optional[str], optional
+            Start sequence for trimming predefined sequences, by default None.
         trimmed_length : int, optional
             Maximum length of trimmed reads, by default None.
         result_folder : str, optional
@@ -92,8 +111,9 @@ class SequenceCounter:
         self.name = (
             name if name is not None else f"SC_{start_seq_to_trim}_{trimmed_length}"
         )
-        self.start_seq_to_trim = start_seq_to_trim
-        self.start_seq_len = 0 if start_seq_to_trim is None else len(start_seq_to_trim)
+        self.start_seq_to_trim_reads = start_seq_to_trim_reads
+        self.start_seq_to_trim_predefined = start_seq_to_trim_predefined
+        # self.start_seq_len = 0 if start_seq_to_trim is None else len(start_seq_to_trim)
         self.trimmed_length = 5000 if trimmed_length is None else trimmed_length
         self.result_dir = Path(result_folder)
         self.result_dir.mkdir(parents=True, exist_ok=True)
@@ -125,13 +145,13 @@ class SequenceCounter:
                     df_sequence_df["Effect"].astype(str),
                 )
             ]
-            index_function = self._get_index_function()
             df_sequence_df = df_sequence_df.rename(
                 columns={"Sequence": "Full Sequence"}
             )
             sequences = []
             deduplicated = []
             seen = collections.defaultdict(set)
+            index_function = self._get_index_function(self.start_seq_to_trim_predefined)
             for _, row in df_sequence_df.iterrows():
                 fullseq = row["Full Sequence"]
                 deduplicated.append(fullseq not in seen)
@@ -275,13 +295,15 @@ class SequenceCounter:
             )
             df_read_counter = pd.read_csv(read_counter_file, sep="\t")
             counter: Dict[str, int] = collections.Counter()
-            index_function = self._get_index_function()
+            index_function = self._get_index_function(self.start_seq_to_trim_reads)
             for _, row in df_read_counter.iterrows():
                 seq1 = row["Sequence"]
                 count = row["Count"]
                 index1 = index_function(seq1)
                 index2 = index1 + min(len(seq1), self.trimmed_length)
                 seq = seq1[index1:index2]
+                if len(seq) == 0:
+                    continue
                 counter[seq] += count
             df = pd.DataFrame.from_dict(
                 {"Sequence": list(counter.keys()), "Count": list(counter.values())}
@@ -295,18 +317,19 @@ class SequenceCounter:
             .depends_on(raw_lane.prepare_input())
         )
 
-    def _find_index(self, sequence):
-        index1 = sequence.find(self.start_seq_to_trim)
-        if index1 == -1:
-            return 0
-        else:
-            return index1 + len(self.start_seq_to_trim)
+    def _get_index_function(self, start_seq_to_trim):
+        def _find_index(sequence):
+            index1 = sequence.find(start_seq_to_trim)
+            if index1 == -1:
+                return 0
+            else:
+                return index1 + len(start_seq_to_trim)
 
-    def _get_index_function(self):
-        if self.start_seq_to_trim is None:
+        print(start_seq_to_trim)
+        if start_seq_to_trim is None:
             return lambda x: 0
         else:
-            return self._find_index
+            return _find_index
 
     def count_samples_fast(self, raw_lane, row_order=None):
         """
@@ -370,7 +393,7 @@ class SequenceCounter:
         fn1 = raw_lane.get_aligner_input_filenames()[0]
         total_counts = count_raw_input_reads(str(fn1))
         df_sequence_df = pd.read_csv(
-            self.result_dir / "predefined_sequences.tsv", sep="\t"
+            self.result_dir / f"{self.name}_predefined_sequences.tsv", sep="\t"
         )
         for _, row in df_sequence_df.iterrows():
             seq = row["Sequence"]
@@ -448,7 +471,7 @@ class SequenceCounter:
         try:
             assert len(predefined) == len(trimmed)
         except AssertionError:
-            print(predefined.intersection(trimmed))
+            print(predefined.difference(trimmed).pop())
             raise
 
     def generate_fastq_from_unmatched(self, raw_lane: Sample) -> FileGeneratingJob:
