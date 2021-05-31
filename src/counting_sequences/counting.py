@@ -134,6 +134,14 @@ class SequenceCounter:
     def write_predefined_sequences(self):
         outputfile = self.result_dir / f"{self.name}_predefined_sequences.tsv"
 
+        def get_trim_sequence_function(index_function):
+            def _trim(fullseq):
+                index1 = index_function(fullseq)
+                index2 = index1 + min(len(fullseq), self.trimmed_length)
+                return fullseq[index1:index2]
+
+            return _trim
+
         def __dump():
             df_sequence_df = pd.read_csv(self.sequence_file_path, sep="\t")
             if self.sequence_df_filter is not None:
@@ -152,6 +160,16 @@ class SequenceCounter:
             deduplicated = []
             seen = collections.defaultdict(set)
             index_function = self._get_index_function(self.start_seq_to_trim_predefined)
+            trim_function = get_trim_sequence_function(index_function)
+            df_sequence_df["Sequence"] = df_sequence_df["Full Sequence"].apply(
+                trim_function
+            )
+            df_sequence_df["Duplicate"] = df_sequence_df.duplicated(
+                subset="Sequence", keep="first"
+            )
+            df_sequence_df["Duplicate Full"] = df_sequence_df.duplicated(
+                subset="Full Sequence", keep="first"
+            )
             for _, row in df_sequence_df.iterrows():
                 fullseq = row["Full Sequence"]
                 deduplicated.append(fullseq not in seen)
@@ -160,21 +178,27 @@ class SequenceCounter:
                 index2 = index1 + min(len(fullseq), self.trimmed_length)
                 seq = fullseq[index1:index2]
                 sequences.append(seq)
-            df_sequence_df["Sequence"] = sequences
-            df_sequence_df["Deduplicated"] = deduplicated
-            duplicates = []
-            dup_names = []
-            for seq in df_sequence_df["Full Sequence"].values:
-                dups = seen[seq]
-                dup_names.append(";".join(list(dups)))
-                duplicates.append(len(dups) > 1)
-            df_sequence_df["Duplicate"] = duplicates
-            df_sequence_df["Duplicate Entries"] = dup_names
+            df_sequence_df["Duplicate Count"] = 1
+            df_sequence_df["Duplicate Entries"] = ""
+            for _, grouped_duplicates in df_sequence_df.groupby("Full Sequence"):
+                if len(grouped_duplicates) > 1:
+                    df_sequence_df.loc[
+                        grouped_duplicates.index, "Duplicate Entries"
+                    ] = ",".join(grouped_duplicates["Name"])
+                    df_sequence_df.loc[
+                        grouped_duplicates.index, "Duplicate Count"
+                    ] = len(grouped_duplicates)
             df_sequence_df.to_csv(outputfile, sep="\t", index=False)
-            self.assert_predefined(
-                df_sequence_df["Full Sequence"].values,
-                df_sequence_df["Sequence"].values,
-            )
+            try:
+                pd.testing.assert_frame_equal(
+                    df_sequence_df[["Duplicate"]], df_sequence_df[["Duplicate Full"]]
+                )
+            except AssertionError:
+                duplicates = df_sequence_df[
+                    df_sequence_df["Duplicate"] != df_sequence_df["Duplicate Full"]
+                ]
+                print(duplicates)
+                print(duplicates[["Name", "Sequence", "Full Sequence"]])
 
         return ppg.FileGeneratingJob(outputfile, __dump).depends_on(self.dependencies)
 
@@ -395,30 +419,30 @@ class SequenceCounter:
         df_sequence_df = pd.read_csv(
             self.result_dir / f"{self.name}_predefined_sequences.tsv", sep="\t"
         )
-        for _, row in df_sequence_df.iterrows():
-            seq = row["Sequence"]
-            pos = get_pos(row["Position"])
-            count = counter[seq]
-            seq_name = str(row["Name"])
-            to_df["Name"].append(seq_name)
-            to_df["Read Count"].append(count)
-            to_df["Frequency"].append(count / total_counts)
-            to_df["Sequence"].append(seq)
-            to_df["Position"].append(pos)
-            to_df["Alteration"].append(row["Alteration"]),
-            to_df["Location"].append(row["Location"]),
-            to_df["Type"].append(row["Type"]),
-            to_df["AA Position"].append(row["AA Position"]),
-            to_df["Effect"].append(row["Effect"]),
-            to_df["Mutant Codon"].append(row["Mutant Codon"]),
-            to_df["WT Codon"].append(row["WT Codon"]),
-            to_df["New AA"].append(row["New AA"]),
-            to_df["Original AA"].append(row["Original AA"])
-            to_df["Deduplicated"].append(row["Deduplicated"]),
-            to_df["Duplicate"].append(row["Duplicate"]),
-            to_df["Duplicate Entries"].append(row["Duplicate Entries"])
-        df_ret = pd.DataFrame(to_df)
-        df_ret["Name"] = pd.Categorical(df_ret["Name"], categories=row_order)
+        counts = [counter[seq] for seq in df_sequence_df["Sequence"]]
+        result = df_sequence_df.copy()[
+            [
+                "Name",
+                "Alteration",
+                "Location",
+                "Type",
+                "Sequence",
+                "Position",
+                "AA Position",
+                "Effect",
+                "Mutant Codon",
+                "WT Codon",
+                "New AA",
+                "Original AA",
+                "Duplicate",
+                "Duplicate Entries",
+                "Duplicate Count",
+            ]
+        ]
+        result["Read Count"] = counts
+        result["Frequency"] = result["Read Count"] / total_counts
+        result["Position"] = result["Position"].apply(get_pos)
+        result["Name"] = pd.Categorical(result["Name"], categories=row_order)
         columns_in_order = [
             "Name",
             "Read Count",
@@ -434,15 +458,15 @@ class SequenceCounter:
             "WT Codon",
             "New AA",
             "Original AA",
-            "Deduplicated",
             "Duplicate",
             "Duplicate Entries",
+            "Duplicate Count",
         ]
-        df_ret = df_ret[columns_in_order]
-        df_ret = df_ret.sort_values("Name")
-        df_ret.index = df_ret["Name"]
+        result = result[columns_in_order]
+        result = result.sort_values("Name")
+        result.index = result["Name"]
         # now the non_matched
-        for seq in df_ret["Sequence"].unique():
+        for seq in result["Sequence"].unique():
             del counter[seq]
         to_df = {
             "Read Count": [],
@@ -459,19 +483,23 @@ class SequenceCounter:
             to_df["Sequence"].append(seq)
 
         df_unmatched = pd.DataFrame(to_df)
-        return df_ret, df_unmatched
+        return result, df_unmatched
 
-    def assert_predefined(self, predefines, predefined_trimmed):
+    def assert_predefined(self, df):  # predefines, predefined_trimmed):
         """
         Checks wether the specified trimmed_length and start_sequence_to_trim
         does lead to ambigous trimmed reads.
         """
+        df[""]
         predefined = set(predefines)
         trimmed = set(predefined_trimmed)
         try:
             assert len(predefined) == len(trimmed)
         except AssertionError:
+            print(len(predefined))
+            print(len(trimmed))
             print(predefined.difference(trimmed).pop())
+
             raise
 
     def generate_fastq_from_unmatched(self, raw_lane: Sample) -> FileGeneratingJob:
