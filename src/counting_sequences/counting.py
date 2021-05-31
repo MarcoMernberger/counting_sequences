@@ -109,7 +109,7 @@ class SequenceCounter:
             Output folder to save the count results, by default "results/counts".
         """
         self.name = (
-            name if name is not None else f"SC_{start_seq_to_trim}_{trimmed_length}"
+            name if name is not None else f"SC_{start_seq_to_trim_reads}_{trimmed_length}"
         )
         self.start_seq_to_trim_reads = start_seq_to_trim_reads
         self.start_seq_to_trim_predefined = start_seq_to_trim_predefined
