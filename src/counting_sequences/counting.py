@@ -485,23 +485,6 @@ class SequenceCounter:
         df_unmatched = pd.DataFrame(to_df)
         return result, df_unmatched
 
-    def assert_predefined(self, df):  # predefines, predefined_trimmed):
-        """
-        Checks wether the specified trimmed_length and start_sequence_to_trim
-        does lead to ambigous trimmed reads.
-        """
-        df[""]
-        predefined = set(predefines)
-        trimmed = set(predefined_trimmed)
-        try:
-            assert len(predefined) == len(trimmed)
-        except AssertionError:
-            print(len(predefined))
-            print(len(trimmed))
-            print(predefined.difference(trimmed).pop())
-
-            raise
-
     def generate_fastq_from_unmatched(self, raw_lane: Sample) -> FileGeneratingJob:
         """
         Generates a fastq for the unmatched files.
