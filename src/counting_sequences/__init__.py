@@ -11,4 +11,4 @@ finally:
     del get_distribution, DistributionNotFound
 
 from .counting import SequenceCounter, combine
-
+from .adapter import CutadaptMatch
