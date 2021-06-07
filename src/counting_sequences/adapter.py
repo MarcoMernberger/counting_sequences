@@ -4,10 +4,9 @@ import collections
 import cutadapt
 import cutadapt.align
 import pandas as pd
-import gzip
 from pathlib import Path
-from util import read_fastq_iterator
-
+from .util import read_fastq_iterator, get_fastq_iterator
+from typing import Callable
 
 AdapterMatch = collections.namedtuple(
     "AdapterMatch", ["astart", "astop", "rstart", "rstop", "matches", "errors"]
@@ -123,7 +122,20 @@ class CutadaptMatch:
 
         return filter_func
 
-    def filter_single(self):
+    def filter_single(self) -> Callable:
+        """
+        filter_single returns a filter function that filters paired end reads to a single read.
+
+        filter_single returns a filter function that takes paired end reads,
+        identifies the read that contains forward/reverse adapter sequences, trims thoser sequences
+        and returns this single mate pair trimmed at the adapter occurences.
+
+        Returns
+        -------
+        Callable
+            Filter function for fastqw processor.
+        """
+
         def filter_func(seq1, qual1, name1, seq2, qual2, name2):
             seq1 = seq1.decode()
             seq2 = seq2.decode()
@@ -133,7 +145,7 @@ class CutadaptMatch:
                 # forward adapter nowhere to be found, discard
                 return None
             elif match_begin_fwd1 is None:
-                # forward adapter is in read2
+                # forward adapter is in read2, switch the reads
                 seq1, qual1, name1, seq2, qual2, name2 = (
                     seq2,
                     qual2,
@@ -153,7 +165,7 @@ class CutadaptMatch:
                 match_end_fwd1 = self.match(self.adapters["adapter_sequence_end"], seq1)
                 match_end_fwd2 = self.match(self.adapters["adapter_sequence_end"], seq2)
                 if match_end_fwd1 is None and match_end_fwd2 is not None:
-                    # take the second
+                    # take the second, switch the reads
                     seq1, qual1, name1, seq2, qual2, name2 = (
                         seq2,
                         qual2,
@@ -165,7 +177,7 @@ class CutadaptMatch:
                     match_end_fwd = match_end_fwd2
                     match_begin_fwd = match_begin_fwd2
                 else:
-                    # take the first
+                    # take the first, as it contains the end adapter
                     match_end_fwd = match_end_fwd1
                     match_begin_fwd = match_begin_fwd1
             i1 = match_begin_fwd.rstop
@@ -184,81 +196,75 @@ class CutadaptMatch:
         return filter_func
 
     def count_adapter_occurences(
-        self, r1, r2, output_file, max=100000, dependencies=[],
+        self,
+        r1,
+        r2,
+        output_file,
+        max=100000,
+        dependencies=[],
     ):
         if isinstance(output_file, str):
             outfile = Path(output_file)
         outfile.parent.mkdir(parents=True, exist_ok=True)
-        our_iter = read_fastq_iterator
 
         def __dump():
-            with gzip.open(r1, "r") as op1:
-                with gzip.open(r2, "r") as op2:
-                    counter = collections.Counter()
-                    examples = {}
-                    count = 0
-                    for tup in zip(our_iter(op1), our_iter(op2)):
-                        print(tup)
-                        seq1, name1, _ = tup[0]
-                        seq2, name2, _ = tup[1]
-                        seq1 = seq1.decode()
-                        seq2 = seq2.decode()
-                        match_begin_fwd1 = (
-                            self.match(self.adapters["adapter_sequence_begin"], seq1)
-                            is not None
-                        )
-                        match_begin_fwd2 = (
-                            self.match(self.adapters["adapter_sequence_begin"], seq2)
-                            is not None
-                        )
-                        match_end_fwd1 = (
-                            self.match(self.adapters["adapter_sequence_end"], seq1)
-                            is not None
-                        )
-                        match_end_fwd2 = (
-                            self.match(self.adapters["adapter_sequence_end"], seq2)
-                            is not None
-                        )
-                        match_begin_rev1 = (
-                            self.match(
-                                self.adapters["adapter_sequence_begin_reverse"], seq1
-                            )
-                            is not None
-                        )
-                        match_begin_rev2 = (
-                            self.match(
-                                self.adapters["adapter_sequence_begin_reverse"], seq2
-                            )
-                            is not None
-                        )
-                        match_end_rev1 = (
-                            self.match(
-                                self.adapters["adapter_sequence_end_reverse"], seq1
-                            )
-                            is not None
-                        )
-                        match_end_rev2 = (
-                            self.match(
-                                self.adapters["adapter_sequence_end_reverse"], seq2
-                            )
-                            is not None
-                        )
-                        key = (
-                            match_begin_fwd1,
-                            match_begin_fwd2,
-                            match_end_fwd1,
-                            match_end_fwd2,
-                            match_begin_rev1,
-                            match_begin_rev2,
-                            match_end_rev1,
-                            match_end_rev2,
-                        )
-                        counter[key] += 1
-                        if key not in examples:
-                            examples[key] = (seq1, seq2, name1, name2)
-                        count += 1
-                        if count >= max:
-                            break
+            iter1 = get_fastq_iterator(r1)
+            iter2 = get_fastq_iterator(r2)
+            counter = collections.Counter()
+            examples = {}
+            count = 0
+            for tup in zip(iter1, iter2):
+                print(tup)
+                seq1, name1, _ = tup[0]
+                seq2, name2, _ = tup[1]
+                # seq1 = seq1.decode()
+                # seq2 = seq2.decode()
+                match_begin_fwd1 = (
+                    self.match(self.adapters["adapter_sequence_begin"], seq1)
+                    is not None
+                )
+                match_begin_fwd2 = (
+                    self.match(self.adapters["adapter_sequence_begin"], seq2)
+                    is not None
+                )
+                match_end_fwd1 = (
+                    self.match(self.adapters["adapter_sequence_end"], seq1) is not None
+                )
+                match_end_fwd2 = (
+                    self.match(self.adapters["adapter_sequence_end"], seq2) is not None
+                )
+                match_begin_rev1 = (
+                    self.match(self.adapters["adapter_sequence_begin_reverse"], seq1)
+                    is not None
+                )
+                match_begin_rev2 = (
+                    self.match(self.adapters["adapter_sequence_begin_reverse"], seq2)
+                    is not None
+                )
+                match_end_rev1 = (
+                    self.match(self.adapters["adapter_sequence_end_reverse"], seq1)
+                    is not None
+                )
+                match_end_rev2 = (
+                    self.match(self.adapters["adapter_sequence_end_reverse"], seq2)
+                    is not None
+                )
+                key = (
+                    match_begin_fwd1,
+                    match_begin_fwd2,
+                    match_end_fwd1,
+                    match_end_fwd2,
+                    match_begin_rev1,
+                    match_begin_rev2,
+                    match_end_rev1,
+                    match_end_rev2,
+                )
+                counter[key] += 1
+                if key not in examples:
+                    examples[key] = (seq1, seq2, name1, name2)
+                count += 1
+                if count >= max:
+                    break
             to_df = {
                 "Begin_forward_1": [],
                 "Begin_forward_2": [],
@@ -288,7 +294,12 @@ class CutadaptMatch:
         return ppg.FileGeneratingJob(outfile, __dump).depends_on(dependencies)
 
     def count_most_common_sequences(
-        self, r1, r2, output_file, max=100000, dependencies=[],
+        self,
+        r1,
+        r2,
+        output_file,
+        max=100000,
+        dependencies=[],
     ):
         if isinstance(output_file, str):
             outfile = Path(output_file)
@@ -296,23 +307,21 @@ class CutadaptMatch:
         our_iter = read_fastq_iterator
 
         def __dump():
-            with gzip.open(r1, "r") as op1:
-                with gzip.open(r2, "r") as op2:
-                    counter = collections.Counter()
-                    examples = {}
-                    count = 0
-                    for tup in zip(our_iter(op1), our_iter(op2)):
-                        seq1, name1, _ = tup[0]
-                        seq2, name2, _ = tup[1]
-                        seq1 = seq1.decode()
-                        seq2 = seq2.decode()
-                        key = (seq1, seq2)
-                        counter[key] += 1
-                        if key not in examples:
-                            examples[key] = (name1, name2)
-                        count += 1
-                        if count >= max:
-                            break
+            iter1 = get_fastq_iterator(r1)
+            iter2 = get_fastq_iterator(r2)
+            counter = collections.Counter()
+            examples = {}
+            count = 0
+            for tup in zip(iter1, iter2):
+                seq1, name1, _ = tup[0]
+                seq2, name2, _ = tup[1]
+                key = (seq1, seq2)
+                counter[key] += 1
+                if key not in examples:
+                    examples[key] = (name1, name2)
+                count += 1
+                if count >= max:
+                    break
             to_df = {
                 "Seq1": [],
                 "Seq2": [],

@@ -10,5 +10,5 @@ except DistributionNotFound:
 finally:
     del get_distribution, DistributionNotFound
 
-from .counting import SequenceCounter, combine
+from .counting import SequenceCounter
 from .adapter import CutadaptMatch

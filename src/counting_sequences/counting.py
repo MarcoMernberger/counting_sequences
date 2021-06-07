@@ -8,45 +8,11 @@ import collections
 import pypipegraph as ppg
 import pandas as pd
 import numpy as np
-import subprocess
+from .util import count_raw_input_reads
 
 __author__ = "MarcoMernberger"
 __copyright__ = "MarcoMernberger"
 __license__ = "mit"
-
-
-def count_raw_input_reads(gz_filename1):
-    if gz_filename1.endswith(".gz"):
-        p1 = subprocess.Popen(["gunzip", "-c", gz_filename1], stdout=subprocess.PIPE)
-        p2 = subprocess.Popen(["wc", "-l"], stdin=p1.stdout, stdout=subprocess.PIPE)
-        x = int(p2.communicate()[0][:-1]) / 4
-    else:
-        p2 = subprocess.Popen(["wc", "-l", gz_filename1], stdout=subprocess.PIPE)
-        t = p2.communicate()[0]
-        try:
-            x = int(t.split()[0])
-            x = x / 4
-        except ValueError:
-            print("Error ...")
-            print(t)
-            raise
-    return x
-
-
-def combine(inputfiles, outfile, dependencies):
-    Path(outfile).parent.mkdir(parents=True, exist_ok=True)
-
-    def dump():
-        concats = []
-        for sample_name in inputfiles:
-            fileobj = inputfiles[sample_name]
-            df = pd.read_csv(str(fileobj), sep="\t")
-            df.insert(0, "Sample", [sample_name] * len(df))
-            concats.append(df)
-        df_ret = pd.concat(concats)
-        df_ret.to_csv(outfile, sep="\t", index=False)
-
-    return ppg.MultiFileGeneratingJob([outfile], dump).depends_on(dependencies)
 
 
 class SequenceCounter:
@@ -109,17 +75,33 @@ class SequenceCounter:
             Output folder to save the count results, by default "results/counts".
         """
         self.name = (
-            name if name is not None else f"SC_{start_seq_to_trim_reads}_{trimmed_length}"
+            name
+            if name is not None
+            else f"SC_{start_seq_to_trim_reads}_{trimmed_length}"
         )
         self.start_seq_to_trim_reads = start_seq_to_trim_reads
         self.start_seq_to_trim_predefined = start_seq_to_trim_predefined
-        # self.start_seq_len = 0 if start_seq_to_trim is None else len(start_seq_to_trim)
-        self.trimmed_length = 5000 if trimmed_length is None else trimmed_length
+        self.trimmed_length = trimmed_length
         self.result_dir = Path(result_folder)
         self.result_dir.mkdir(parents=True, exist_ok=True)
         self.sequence_file_path = sequence_file_path
         self.dependencies = dependencies
         self.sequence_df_filter = sequence_df_filter
+
+    def combine(self, inputfiles, outfile, dependencies):
+        Path(outfile).parent.mkdir(parents=True, exist_ok=True)
+
+        def dump():
+            concats = []
+            for sample_name in inputfiles:
+                fileobj = inputfiles[sample_name]
+                df = pd.read_csv(str(fileobj), sep="\t")
+                df.insert(0, "Sample", [sample_name] * len(df))
+                concats.append(df)
+            df_ret = pd.concat(concats)
+            df_ret.to_csv(outfile, sep="\t", index=False)
+
+        return ppg.MultiFileGeneratingJob([outfile], dump).depends_on(dependencies)
 
     def get_dependencies(self):
         return self.dependencies + [
@@ -131,28 +113,34 @@ class SequenceCounter:
             ppg.FunctionInvariant(f"{self.name}_count_fastq", self.count_fastq),
         ]
 
+    def get_trim_sequence_function(self, index_function):
+        def _trim(fullseq):
+            index1, index2 = index_function(fullseq)
+            if index1 == -1:
+                return ""
+            return fullseq[index1:index2]
+
+        return _trim
+
     def write_predefined_sequences(self):
         outputfile = self.result_dir / f"{self.name}_predefined_sequences.tsv"
-
-        def get_trim_sequence_function(index_function):
-            def _trim(fullseq):
-                index1 = index_function(fullseq)
-                index2 = index1 + min(len(fullseq), self.trimmed_length)
-                return fullseq[index1:index2]
-
-            return _trim
 
         def __dump():
             df_sequence_df = pd.read_csv(self.sequence_file_path, sep="\t")
             if self.sequence_df_filter is not None:
                 df_sequence_df = self.sequence_df_filter(df_sequence_df)
-            df_sequence_df["Name"] = [
-                f"{a}_{b}"
-                for a, b in zip(
-                    df_sequence_df["Alteration"].astype(str),
-                    df_sequence_df["Effect"].astype(str),
-                )
-            ]
+            if "Name" not in df_sequence_df.columns:
+                try:
+                    df_sequence_df["Name"] = [
+                        f"{a}_{b}"
+                        for a, b in zip(
+                            df_sequence_df["Alteration"].astype(str),
+                            df_sequence_df["Effect"].astype(str),
+                        )
+                    ]
+                except KeyError:
+                    print("You need a Name column to identify all the sequences.")
+                    raise
             df_sequence_df = df_sequence_df.rename(
                 columns={"Sequence": "Full Sequence"}
             )
@@ -160,7 +148,7 @@ class SequenceCounter:
             deduplicated = []
             seen = collections.defaultdict(set)
             index_function = self._get_index_function(self.start_seq_to_trim_predefined)
-            trim_function = get_trim_sequence_function(index_function)
+            trim_function = self.get_trim_sequence_function(index_function)
             df_sequence_df["Sequence"] = df_sequence_df["Full Sequence"].apply(
                 trim_function
             )
@@ -174,9 +162,7 @@ class SequenceCounter:
                 fullseq = row["Full Sequence"]
                 deduplicated.append(fullseq not in seen)
                 seen[fullseq].add(row["Name"])
-                index1 = index_function(fullseq)
-                index2 = index1 + min(len(fullseq), self.trimmed_length)
-                seq = fullseq[index1:index2]
+                seq = trim_function(fullseq)
                 sequences.append(seq)
             df_sequence_df["Duplicate Count"] = 1
             df_sequence_df["Duplicate Entries"] = ""
@@ -320,12 +306,11 @@ class SequenceCounter:
             df_read_counter = pd.read_csv(read_counter_file, sep="\t")
             counter: Dict[str, int] = collections.Counter()
             index_function = self._get_index_function(self.start_seq_to_trim_reads)
+            trim_function = self.get_trim_sequence_function(index_function)
             for _, row in df_read_counter.iterrows():
                 seq1 = row["Sequence"]
                 count = row["Count"]
-                index1 = index_function(seq1)
-                index2 = index1 + min(len(seq1), self.trimmed_length)
-                seq = seq1[index1:index2]
+                seq = trim_function(seq1)
                 if len(seq) == 0:
                     continue
                 counter[seq] += count
@@ -342,18 +327,38 @@ class SequenceCounter:
         )
 
     def _get_index_function(self, start_seq_to_trim):
-        def _find_index(sequence):
-            index1 = sequence.find(start_seq_to_trim)
-            if index1 == -1:
-                return 0
-            else:
-                return index1 + len(start_seq_to_trim)
+        def __find_second_index_trimmed_length(seq, index1):
+            return min(len(seq), index1 + self.trimmed_length)
 
-        print(start_seq_to_trim)
-        if start_seq_to_trim is None:
-            return lambda x: 0
+        def __find_second_index(seq, index1):
+            return len(seq)
+
+        def __find_index(seq):
+            return seq.find(start_seq_to_trim) + len(start_seq_to_trim)
+
+        def __return_null(seq):
+            return 0
+
+        if self.trimmed_length is not None:
+            second_index_func = __find_second_index_trimmed_length
         else:
-            return _find_index
+            second_index_func = __find_second_index
+        if start_seq_to_trim is None:
+            first_index_func = __return_null
+        else:
+            first_index_func = __find_index
+
+        def _find_index(sequence):
+            index = first_index_func(sequence)
+            if index == -1:
+                index1 = -1
+                index2 = -1
+            else:
+                index1 = index
+                index2 = second_index_func(sequence, index1)
+                return index1, index2
+
+        return _find_index
 
     def count_samples_fast(self, raw_lane, row_order=None):
         """
@@ -395,73 +400,27 @@ class SequenceCounter:
                 df_read_counter.Count.values, index=df_read_counter.Sequence
             ).to_dict()
         )
-        to_df = {
-            "Read Count": [],
-            "Sequence": [],
-            "Name": [],
-            "Frequency": [],
-            "Position": [],
-            "Alteration": [],
-            "Location": [],
-            "Type": [],
-            "AA Position": [],
-            "Effect": [],
-            "Mutant Codon": [],
-            "WT Codon": [],
-            "New AA": [],
-            "Original AA": [],
-            "Deduplicated": [],
-            "Duplicate": [],
-            "Duplicate Entries": [],
-        }
         fn1 = raw_lane.get_aligner_input_filenames()[0]
         total_counts = count_raw_input_reads(str(fn1))
         df_sequence_df = pd.read_csv(
             self.result_dir / f"{self.name}_predefined_sequences.tsv", sep="\t"
         )
         counts = [counter[seq] for seq in df_sequence_df["Sequence"]]
-        result = df_sequence_df.copy()[
-            [
-                "Name",
-                "Alteration",
-                "Location",
-                "Type",
-                "Sequence",
-                "Position",
-                "AA Position",
-                "Effect",
-                "Mutant Codon",
-                "WT Codon",
-                "New AA",
-                "Original AA",
-                "Duplicate",
-                "Duplicate Entries",
-                "Duplicate Count",
-            ]
-        ]
+        result = df_sequence_df.copy()
         result["Read Count"] = counts
         result["Frequency"] = result["Read Count"] / total_counts
-        result["Position"] = result["Position"].apply(get_pos)
         result["Name"] = pd.Categorical(result["Name"], categories=row_order)
         columns_in_order = [
             "Name",
             "Read Count",
             "Frequency",
-            "Position",
-            "Alteration",
-            "Location",
-            "Type",
-            "Sequence",
-            "AA Position",
-            "Effect",
-            "Mutant Codon",
-            "WT Codon",
-            "New AA",
-            "Original AA",
-            "Duplicate",
-            "Duplicate Entries",
-            "Duplicate Count",
         ]
+        if "Position" in result.columns:
+            result["Position"] = result["Position"].apply(get_pos)
+            columns_in_order.append("Position")
+        for col in df_sequence_df.columns:
+            if col not in columns_in_order:
+                columns_in_order.append(col)
         result = result[columns_in_order]
         result = result.sort_values("Name")
         result.index = result["Name"]
