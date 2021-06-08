@@ -70,56 +70,12 @@ class CutadaptMatch:
         _match = AdapterMatch(*alignment)
         return _match
 
-    def match_right(self, adapter, seq):
-        alignment = adapter.locate(seq)
-        # print("---------------------")
-        # print(adapter)
-        # print(seq)
-        # print(alignment)
-        if alignment is None:
-            return None
-        else:
-            _match = AdapterMatch(*alignment)
-            while alignment is not None:
-                off = alignment[3]
-                # print(alignment)
-                alignment = adapter.locate(seq[off:])
-                if alignment is not None:
-                    alignment = list(alignment)
-                    alignment[2] = alignment[2] + off
-                    alignment[3] = alignment[3] + off
-                    _match = AdapterMatch(*alignment)
-                    # print(seq[off:], alignment)
-                    # print("-->", alignment)
-            # print(_match)
-            # print("ss---------------------")
-            # raise ValueError()
-            return _match
-
     def filter(self):
         def filter_func(seq1, qual1, name1, seq2, qual2, name2):
             seq1 = seq1.decode()
             seq2 = seq2.decode()
             match_begin_fwd1 = self.match(self.adapters["adapter_sequence_begin"], seq1)
             match_begin_fwd2 = self.match(self.adapters["adapter_sequence_begin"], seq2)
-
-            if b"M03491:3:000000000-JMJP7:1:1101:18415:1693" in name1:
-                print(self.adapter_sequence_begin, self.adapter_sequence_end)
-                print(
-                    self.adapter_sequence_begin_reverse,
-                    self.adapter_sequence_end_reverse,
-                )
-                print(seq1)
-                print(match_begin_fwd1)
-                print(seq2)
-                print(match_begin_fwd2)
-                print(self.match(self.adapters["adapter_sequence_end"], seq1))
-                print(self.match(self.adapters["adapter_sequence_end_reverse"], seq1))
-                print(self.match(self.adapters["adapter_sequence_begin_reverse"], seq1))
-                print(self.match(self.adapters["adapter_sequence_end"], seq2))
-                print(self.match(self.adapters["adapter_sequence_end_reverse"], seq2))
-                print(self.match(self.adapters["adapter_sequence_begin_reverse"], seq2))
-                # raise ValueError()
             if match_begin_fwd1 is None and match_begin_fwd2 is None:
                 # forward adapter nowhere to be found, discard
                 return None
@@ -138,7 +94,6 @@ class CutadaptMatch:
                     seq1, qual1, seq2, qual2 = seq2, qual2, seq1, qual1
             i1 = match_begin_fwd.rstop
             # adapter_begin forward found
-            # print(name1)
             match_end_fwd = self.match_right(
                 self.adapters["adapter_sequence_end"], seq1
             )
@@ -163,29 +118,17 @@ class CutadaptMatch:
                     mbf_genomes.common.reverse_complement(seq2),
                 )
 
-                # print("j2", self.adapter_sequence_begin_reverse, match_begin_rev)
                 if match_begin_rev is None:
                     j2 = len(seq2)
                 else:
                     j2 = len(seq2) - match_begin_rev.rstop  # match_begin_rev.rstart
             else:
-                # if b"M03491:3:000000000-JMJP7:1:1101:18415:1693" in name1:
-                #     print(seq1)
-                #     print(seq2)
-                #     print(match_end_rev)
-                #     print("here")
                 # reverse read is not matching, discard
                 return None
             s1 = seq1[i1:i2]
             q1 = qual1[i1:i2]
             s2 = seq2[j1:j2]
             q2 = qual2[j1:j2]
-            # if b"M03491:3:000000000-JMJP7:1:1101:18415:1693" in name1:
-            # print(seq1)
-            # print(i1, i2, s1)
-            # print(seq2)
-            # print(j1, j2, s2)
-            # raise ValueError()
             if s1 == "" or s2 == "":
                 return None
             return (s1.encode(), q1, name1, s2.encode(), q2, name2)
