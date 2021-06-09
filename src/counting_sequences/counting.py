@@ -280,7 +280,7 @@ class SequenceCounter:
             df_counter.to_csv(output_file, sep="\t", index=False)
 
         return (
-            ppg.FileGeneratingJob(output_file, __write)
+            ppg.FileGeneratingJob(output_file, __write, empty_ok=True)
             .depends_on(dependencies)
             .depends_on(self.dependencies)
             .depends_on(raw_lane.prepare_input())
