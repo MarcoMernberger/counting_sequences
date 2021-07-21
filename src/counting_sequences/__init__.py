@@ -13,3 +13,4 @@ finally:
 from .counting import SequenceCounter
 from .adapter import CutadaptMatch
 from .plots import plot_count_corr
+from .util import generate_stitched_fastq
