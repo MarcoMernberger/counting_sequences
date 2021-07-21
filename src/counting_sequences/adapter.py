@@ -94,9 +94,6 @@ class CutadaptMatch:
                     seq1, qual1, seq2, qual2 = seq2, qual2, seq1, qual1
             i1 = match_begin_fwd.rstop
             # adapter_begin forward found
-            match_end_fwd = self.match_right(
-                self.adapters["adapter_sequence_end"], seq1
-            )
             match_end_fwd = self.match(
                 self.adapters["adapter_sequence_end_reverse"],
                 mbf_genomes.common.reverse_complement(seq1),
