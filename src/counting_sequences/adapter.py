@@ -71,6 +71,7 @@ class CutadaptMatch:
         return _match
 
     def filter(self):
+
         def filter_func(seq1, qual1, name1, seq2, qual2, name2):
             seq1 = seq1.decode()
             seq2 = seq2.decode()
@@ -128,6 +129,9 @@ class CutadaptMatch:
             q2 = qual2[j1:j2]
             if s1 == "" or s2 == "":
                 return None
+            print(i1, i2, j1, j2)
+            print((s1.encode(), q1, name1, s2.encode(), q2, name2))
+            raise ValueError()
             return (s1.encode(), q1, name1, s2.encode(), q2, name2)
 
         return filter_func

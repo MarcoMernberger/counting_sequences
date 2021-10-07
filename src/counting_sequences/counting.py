@@ -134,6 +134,7 @@ class SequenceCounter:
             ppg.FunctionInvariant(f"{self.name}_sequence_filter", self.sequence_df_filter),
             ppg.FunctionInvariant(f"{self.name}_get_trim_sequence_function", self.get_trim_sequence_function),
             ppg.FunctionInvariant(f"{self.name}_get_index_function", self._get_index_function),
+            ppg.ParameterInvariant(f"{self.name}_params", [self.trimmed_length, self.seqs_to_trim_reads, self.seqs_to_trim_predefined])
         ]
 
     def get_trim_sequence_function(self, index_function: Callable) -> Callable:
@@ -469,6 +470,10 @@ class SequenceCounter:
         def _find_index(sequence):
             index1 = first_index_function(sequence)
             index2 = second_index_function(sequence)
+            if index1 == -1:
+                index1 = 0
+            if index2 == -1:
+                index2 = len(sequence)
             return index1, index2
 
         return _find_index
