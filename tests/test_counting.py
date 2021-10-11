@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 from pathlib import Path
-from counting_sequences import SequenceCounter
+from counting_sequences import SequenceCounter, CutadaptMatch
 import pypipegraph as ppg
 import pandas as pd
 import pytest
@@ -17,9 +17,10 @@ def scouter(tmpdir):
     scouter = SequenceCounter(
         sequence_file_path=Path(__file__).parent.parent / "data" / "seq_in.csv",
         name=None,
-        start_seq_to_trim="CCTCTT",
+        seqs_to_trim_reads=("CCTCTT"),
+        seqs_to_trim_predefined=("CCTCTT"),
         trimmed_length=150,
-        result_folder=Path(tmpdir) / "test"
+        result_folder=Path(tmpdir) / "test",
     )
     return scouter
 
@@ -59,7 +60,7 @@ def test_write_trim_predefine_alert1(tmpdir, scouter):
         name=None,
         start_seq_to_trim="TTGCTTTACCTCCTTTT",
         trimmed_length=133,
-        result_folder=Path(tmpdir) / "test"
+        result_folder=Path(tmpdir) / "test",
     )
     df_sequence_df = pd.read_csv(scouter.sequence_file_path, sep="\t")
     df_sequence_df["Name"] = [
@@ -75,7 +76,7 @@ def test_write_trim_predefine_alert1(tmpdir, scouter):
     seen = collections.defaultdict(set)
     for _, row in df_sequence_df.iterrows():
         fullseq = row["Full Sequence"]
-        seen[fullseq].add(row["Name"]) 
+        seen[fullseq].add(row["Name"])
         index1 = index_function(fullseq)
         index2 = index1 + min(len(fullseq), scouter.trimmed_length)
         seq = fullseq[index1:index2]
@@ -90,7 +91,9 @@ def test_write_trim_predefine_alert1(tmpdir, scouter):
     df_sequence_df["Duplicate"] = duplicates
     df_sequence_df["Duplicate Entries"] = dup_names
     with pytest.raises(Exception):
-        scouter.assert_predefined(df_sequence_df["Full Sequence"].values, df_sequence_df["Sequence"].values)
+        scouter.assert_predefined(
+            df_sequence_df["Full Sequence"].values, df_sequence_df["Sequence"].values
+        )
 
 
 @pytest.mark.usefixtures("new_pipegraph_no_qc")
@@ -100,7 +103,7 @@ def test_write_trim_predefine_alert2(tmpdir, scouter):
         name=None,
         start_seq_to_trim="TTGCTTTACCTCCTTTT",
         trimmed_length=133,
-        result_folder=Path(tmpdir) / "test"
+        result_folder=Path(tmpdir) / "test",
     )
     df_sequence_df = pd.read_csv(scouter.sequence_file_path, sep="\t")
     df_sequence_df["Name"] = [
@@ -116,7 +119,7 @@ def test_write_trim_predefine_alert2(tmpdir, scouter):
     seen = collections.defaultdict(set)
     for _, row in df_sequence_df.iterrows():
         fullseq = row["Full Sequence"]
-        seen[fullseq].add(row["Name"]) 
+        seen[fullseq].add(row["Name"])
         index1 = index_function(fullseq)
         index2 = index1 + min(len(fullseq), scouter.trimmed_length)
         seq = fullseq[index1:index2]
@@ -131,7 +134,9 @@ def test_write_trim_predefine_alert2(tmpdir, scouter):
     df_sequence_df["Duplicate"] = duplicates
     df_sequence_df["Duplicate Entries"] = dup_names
     with pytest.raises(Exception):
-        scouter.assert_predefined(df_sequence_df["Full Sequence"].values, df_sequence_df["Sequence"].values)
+        scouter.assert_predefined(
+            df_sequence_df["Full Sequence"].values, df_sequence_df["Sequence"].values
+        )
 
 
 @pytest.mark.usefixtures("new_pipegraph_no_qc")
@@ -147,7 +152,9 @@ def test_write_fastq_trimmed(tmpdir, raw_lane, scouter):
     scouter.write_fastq_count_trimmed(raw_lane)
     ppg.run_pipegraph()
     output_file = scouter.result_dir / f"{raw_lane.name}_{scouter.name}_all_reads.tsv"
-    output_file2 = scouter.result_dir / f"{raw_lane.name}_{scouter.name}_all_reads_trimmed.tsv"
+    output_file2 = (
+        scouter.result_dir / f"{raw_lane.name}_{scouter.name}_all_reads_trimmed.tsv"
+    )
     assert output_file.exists()
     assert output_file2.exists()
 
@@ -156,8 +163,13 @@ def test_write_fastq_trimmed(tmpdir, raw_lane, scouter):
 def test_write_count_table(tmpdir, raw_lane, scouter):
     scouter.write_count_table(raw_lane, row_order=None)
     ppg.run_pipegraph()
-    output_file = scouter.result_dir / f"{raw_lane.name}_{scouter.name}_sequence_count.tsv"
-    output_file2 = scouter.result_dir / f"{raw_lane.name}_{scouter.name}_sequence_count_unmatched.tsv"
+    output_file = (
+        scouter.result_dir / f"{raw_lane.name}_{scouter.name}_sequence_count.tsv"
+    )
+    output_file2 = (
+        scouter.result_dir
+        / f"{raw_lane.name}_{scouter.name}_sequence_count_unmatched.tsv"
+    )
     assert output_file.exists()
     assert output_file2.exists()
 
@@ -169,18 +181,12 @@ def test_count_fastq(tmpdir, raw_lane, scouter):
     output_file = scouter.result_dir / f"{raw_lane.name}_{scouter.name}_all_reads.tsv"
     df = pd.read_csv(output_file, sep="\t")
     expected = {
-        "CGTACAAGAGACAAGCAATCAGTGAGGAATCAGAGGCCTCCGGACCCTGGGCAACCAGCCCTGTCGTCTCTCCAGCCCCAGCTGCTCACCATCGCTATCTGAGCGCCACTCTTGTTGGGGCCAGCGCCTCCCACCTTCCCTCTTTTGCTTTACCTCCTTTTAGTTGGCCTTGCCCCGGCCCCGGTCCCTTGCCAAAATGTCTTGTTTAGCCCCGGGTGCTCCTGTCGGGTCTTGACTGATTCACACTTGATATTCTTGTCTTCTGGTTCTTGCTCTGATGAGCACACGTCTGCACTCTTGT":
-        2,
-        "CGTACAAGAGACAAGCAATCAGTGAGGAATCCCTCTTTTGCTTTACCTCCTTTTAGTTGGCCTTGCCCCGGCCCCGGTCCCTTGCCAAAATGTCTTGTTTAGCCCCGGGGTGCTCCTGTCGGGTCTTGACTGATTCACACTTGATATTCTTGTCTTCTGGTTCTTGCTCTGATGAGCACACGTCTGC":
-        1,
-        "CGTACAAGAGACAAGCAATCAGTGAGGAATCCCTCTTTTGCTTTACCTCCTTTTAGTTGGCCTTGCCCCGGCCCCGGTCCCTTGCCAAAATGTCTTGTTTAGCCCCGGGGTGCTCCTGTCGGGTCTTGACTGATTCACACTTGATATTCTTGTCTTCTGGTTCTTGCTCTGATGAGCACACGTCTGCACACACACA":
-        1,
-        "CGTACAAGAGACAAGCAATCAGTGAGGAATCCCTCTTTTGCTTTACCTCCTTTTAGTTGGCCTTGCCCCGGCCCCGGTCCCTTGCCAAAATGTCTTGTTTAGCCCCGGGGTGCTCCTGTCGGGTCTTGACTGATTCACACTTGATATTCTTGTCTTCTGGTTCTTGCTCTGATGAGCACACGTCTG":
-        1,
-        "AGGAATCCCTCTTTTGCTTTACCTCCTTTTAGCCTCTTTTGCCCCGGCCCCGGTCCCTTGCCAAAATGTCTTGTTTAGCCCCGGGTGCTCCTGTCGGGTCTTGACTGATTCACACTTGATATTCTTGTCTTCTGGTTCTTGCTCTGATGAGCACACGTCTGCAACCA":
-        2,
-        "AGGAATCGCTTTACCTCCTTTTAGTTGAAATTGCCCCGGCCCCGGTCCCTTGCCAAAATGTCTTGTTTAGCCCCGGGTGCTCCTGTCGGGTCTTGACTGATTCACACTTGATATTCTTGTCTTCTGGTTCTTGCTCTGATGAGCACACGTCTGCAACCA":
-        1
+        "CGTACAAGAGACAAGCAATCAGTGAGGAATCAGAGGCCTCCGGACCCTGGGCAACCAGCCCTGTCGTCTCTCCAGCCCCAGCTGCTCACCATCGCTATCTGAGCGCCACTCTTGTTGGGGCCAGCGCCTCCCACCTTCCCTCTTTTGCTTTACCTCCTTTTAGTTGGCCTTGCCCCGGCCCCGGTCCCTTGCCAAAATGTCTTGTTTAGCCCCGGGTGCTCCTGTCGGGTCTTGACTGATTCACACTTGATATTCTTGTCTTCTGGTTCTTGCTCTGATGAGCACACGTCTGCACTCTTGT": 2,
+        "CGTACAAGAGACAAGCAATCAGTGAGGAATCCCTCTTTTGCTTTACCTCCTTTTAGTTGGCCTTGCCCCGGCCCCGGTCCCTTGCCAAAATGTCTTGTTTAGCCCCGGGGTGCTCCTGTCGGGTCTTGACTGATTCACACTTGATATTCTTGTCTTCTGGTTCTTGCTCTGATGAGCACACGTCTGC": 1,
+        "CGTACAAGAGACAAGCAATCAGTGAGGAATCCCTCTTTTGCTTTACCTCCTTTTAGTTGGCCTTGCCCCGGCCCCGGTCCCTTGCCAAAATGTCTTGTTTAGCCCCGGGGTGCTCCTGTCGGGTCTTGACTGATTCACACTTGATATTCTTGTCTTCTGGTTCTTGCTCTGATGAGCACACGTCTGCACACACACA": 1,
+        "CGTACAAGAGACAAGCAATCAGTGAGGAATCCCTCTTTTGCTTTACCTCCTTTTAGTTGGCCTTGCCCCGGCCCCGGTCCCTTGCCAAAATGTCTTGTTTAGCCCCGGGGTGCTCCTGTCGGGTCTTGACTGATTCACACTTGATATTCTTGTCTTCTGGTTCTTGCTCTGATGAGCACACGTCTG": 1,
+        "AGGAATCCCTCTTTTGCTTTACCTCCTTTTAGCCTCTTTTGCCCCGGCCCCGGTCCCTTGCCAAAATGTCTTGTTTAGCCCCGGGTGCTCCTGTCGGGTCTTGACTGATTCACACTTGATATTCTTGTCTTCTGGTTCTTGCTCTGATGAGCACACGTCTGCAACCA": 2,
+        "AGGAATCGCTTTACCTCCTTTTAGTTGAAATTGCCCCGGCCCCGGTCCCTTGCCAAAATGTCTTGTTTAGCCCCGGGTGCTCCTGTCGGGTCTTGACTGATTCACACTTGATATTCTTGTCTTCTGGTTCTTGCTCTGATGAGCACACGTCTGCAACCA": 1,
     }
     for _, row in df.iterrows():
         assert expected[row["Sequence"]] == row["Count"]
@@ -190,19 +196,16 @@ def test_count_fastq(tmpdir, raw_lane, scouter):
 def test_count_fastq_trimmed(tmpdir, raw_lane, scouter):
     scouter.write_fastq_count_trimmed(raw_lane)
     ppg.run_pipegraph()
-    output_file = scouter.result_dir / f"{raw_lane.name}_{scouter.name}_all_reads_trimmed.tsv"
+    output_file = (
+        scouter.result_dir / f"{raw_lane.name}_{scouter.name}_all_reads_trimmed.tsv"
+    )
     df = pd.read_csv(output_file, sep="\t")
     expected = {
-        "TTGCTTTACCTCCTTTTAGTTGGCCTTGCCCCGGCCCCGGTCCCTTGCCAAAATGTCTTGTTTAGCCCCGGGTGCTCCTGTCGGGTCTTGACTGATTCACACTTGATATTCTTGTCTTCTGGTTCTTGCTCTGATGAGCACACGTCTGCA":
-        2,
-        "TTGCTTTACCTCCTTTTAGTTGGCCTTGCCCCGGCCCCGGTCCCTTGCCAAAATGTCTTGTTTAGCCCCGGGGTGCTCCTGTCGGGTCTTGACTGATTCACACTTGATATTCTTGTCTTCTGGTTCTTGCTCTGATGAGCACACGTCTGC":
-        2,
-        "TTGCTTTACCTCCTTTTAGTTGGCCTTGCCCCGGCCCCGGTCCCTTGCCAAAATGTCTTGTTTAGCCCCGGGGTGCTCCTGTCGGGTCTTGACTGATTCACACTTGATATTCTTGTCTTCTGGTTCTTGCTCTGATGAGCACACGTCTG":
-        1,
-        "TTGCTTTACCTCCTTTTAGCCTCTTTTGCCCCGGCCCCGGTCCCTTGCCAAAATGTCTTGTTTAGCCCCGGGTGCTCCTGTCGGGTCTTGACTGATTCACACTTGATATTCTTGTCTTCTGGTTCTTGCTCTGATGAGCACACGTCTGCA":
-        2,
-        "AGGAATCGCTTTACCTCCTTTTAGTTGAAATTGCCCCGGCCCCGGTCCCTTGCCAAAATGTCTTGTTTAGCCCCGGGTGCTCCTGTCGGGTCTTGACTGATTCACACTTGATATTCTTGTCTTCTGGTTCTTGCTCTGATGAGCACACGT":
-        1
+        "TTGCTTTACCTCCTTTTAGTTGGCCTTGCCCCGGCCCCGGTCCCTTGCCAAAATGTCTTGTTTAGCCCCGGGTGCTCCTGTCGGGTCTTGACTGATTCACACTTGATATTCTTGTCTTCTGGTTCTTGCTCTGATGAGCACACGTCTGCA": 2,
+        "TTGCTTTACCTCCTTTTAGTTGGCCTTGCCCCGGCCCCGGTCCCTTGCCAAAATGTCTTGTTTAGCCCCGGGGTGCTCCTGTCGGGTCTTGACTGATTCACACTTGATATTCTTGTCTTCTGGTTCTTGCTCTGATGAGCACACGTCTGC": 2,
+        "TTGCTTTACCTCCTTTTAGTTGGCCTTGCCCCGGCCCCGGTCCCTTGCCAAAATGTCTTGTTTAGCCCCGGGGTGCTCCTGTCGGGTCTTGACTGATTCACACTTGATATTCTTGTCTTCTGGTTCTTGCTCTGATGAGCACACGTCTG": 1,
+        "TTGCTTTACCTCCTTTTAGCCTCTTTTGCCCCGGCCCCGGTCCCTTGCCAAAATGTCTTGTTTAGCCCCGGGTGCTCCTGTCGGGTCTTGACTGATTCACACTTGATATTCTTGTCTTCTGGTTCTTGCTCTGATGAGCACACGTCTGCA": 2,
+        "AGGAATCGCTTTACCTCCTTTTAGTTGAAATTGCCCCGGCCCCGGTCCCTTGCCAAAATGTCTTGTTTAGCCCCGGGTGCTCCTGTCGGGTCTTGACTGATTCACACTTGATATTCTTGTCTTCTGGTTCTTGCTCTGATGAGCACACGT": 1,
     }
     for _, row in df.iterrows():
         assert expected[row["Sequence"]] == row["Count"]
@@ -212,7 +215,9 @@ def test_count_fastq_trimmed(tmpdir, raw_lane, scouter):
 def test_count_samples_fast(tmpdir, raw_lane, scouter):
     scouter.write_count_table(raw_lane, row_order=None)
     ppg.run_pipegraph()
-    output_file = scouter.result_dir / f"{raw_lane.name}_{scouter.name}_sequence_count.tsv"
+    output_file = (
+        scouter.result_dir / f"{raw_lane.name}_{scouter.name}_sequence_count.tsv"
+    )
     df = pd.read_csv(output_file, sep="\t")
     df.index = df.Name
     df_predefined = pd.read_csv(scouter.sequence_file_path, sep="\t")
@@ -232,4 +237,3 @@ def test_count_samples_fast(tmpdir, raw_lane, scouter):
     }
     for _, row in df_predefined.iterrows():
         assert df.loc[row["Name"]]["Read Count"] == expected[row["Name"]]
-    
