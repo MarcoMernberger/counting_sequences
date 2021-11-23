@@ -16,11 +16,16 @@ AdapterMatch = collections.namedtuple(
 
 class CutadaptMatch:
     def __init__(
-        self, adapter_start: str, adapter_end: str, cutadapt_error_rate: int = 0
+        self,
+        adapter_start: str,
+        adapter_end: str,
+        cutadapt_error_rate: int = 0,
+        min_overlap: int = 3,
     ) -> None:
         self.adapter_sequence_begin = adapter_start
         self.adapter_sequence_end = adapter_end
         self.maximal_error_rate = cutadapt_error_rate
+        self.min_overlap = min_overlap
         self.adapter_sequence_begin_reverse = mbf_genomes.common.reverse_complement(
             self.adapter_sequence_begin
         )
@@ -28,7 +33,10 @@ class CutadaptMatch:
             self.adapter_sequence_end
         )
         self.where_fwd = (
-            cutadapt.align.START_WITHIN_SEQ2 | cutadapt.align.STOP_WITHIN_SEQ2
+            cutadapt.align.START_WITHIN_SEQ2
+            | cutadapt.align.START_WITHIN_SEQ1
+            # | cutadapt.align.STOP_WITHIN_SEQ2
+            | cutadapt.align.STOP_WITHIN_SEQ1
         )
         self.where_rev = (
             cutadapt.align.START_WITHIN_SEQ2
@@ -55,9 +63,10 @@ class CutadaptMatch:
                 adapter = cutadapt.align.Aligner(
                     asequence if asequence else "",
                     self.maximal_error_rate / len(asequence),
-                    where,
+                    # where,
                     wildcard_ref=True,
                     wildcard_query=False,
+                    min_overlap=self.min_overlap,
                 )
             else:
                 adapter = None
@@ -79,6 +88,13 @@ class CutadaptMatch:
             match_begin_fwd2 = self.match(self.adapters["adapter_sequence_begin"], seq2)
             if match_begin_fwd1 is None and match_begin_fwd2 is None:
                 # forward adapter nowhere to be found, discard
+                # print(name1)
+                # print(self.adapters["adapter_sequence_begin"])
+                # print(seq1)
+                # print(seq2)
+                # print("<<match_begin_fwd1<<", match_begin_fwd1)
+                # print("here0")
+                # raise ValueError()
                 return None
             elif match_begin_fwd1 is None:
                 # forward adapter is in read2
@@ -101,6 +117,7 @@ class CutadaptMatch:
             )
             if match_end_fwd is not None:
                 # adapter_end forward found
+                print("<<match_end_fwd<<", match_end_fwd)
                 i2 = len(seq1) - match_end_fwd.rstop
             else:
                 i2 = len(seq1)
@@ -122,12 +139,102 @@ class CutadaptMatch:
                     j2 = len(seq2) - match_begin_rev.rstop  # match_begin_rev.rstart
             else:
                 # reverse read is not matching, discard
+                # print("here1")
                 return None
             s1 = seq1[i1:i2]
             q1 = qual1[i1:i2]
             s2 = seq2[j1:j2]
             q2 = qual2[j1:j2]
             if s1 == "" or s2 == "":
+                print(seq1)
+                print(seq2)
+                print("----------")
+                print(s1)
+                print(s2)
+                print(i1, i2, j1, j2)
+                # raise ValueError()
+                print("here2")
+                return None
+            return (s1.encode(), q1, name1, s2.encode(), q2, name2)
+
+        return filter_func
+
+    def trim_and_sort(self):
+        def trim_func(seq1, qual1, name1, seq2, qual2, name2):
+            seq1 = seq1.decode()
+            seq2 = seq2.decode()
+            match_begin_fwd1 = None
+            match_begin_fwd2 = None
+
+            match_begin_fwd1
+            match_begin_fwd1
+            match_begin_fwd1 = self.match(self.adapters["adapter_sequence_begin"], seq1)
+            match_begin_fwd2 = self.match(self.adapters["adapter_sequence_begin"], seq2)
+            if match_begin_fwd1 is None and match_begin_fwd2 is None:
+                # forward adapter nowhere to be found, discard
+                print(self.adapters["adapter_sequence_begin"])
+                print(seq1)
+                print("<<match_begin_fwd1<<", match_begin_fwd1)
+                print("here0")
+                return None
+            elif match_begin_fwd1 is None:
+                # forward adapter is in read2
+                seq1, qual1, seq2, qual2 = seq2, qual2, seq1, qual1
+                match_begin_fwd = match_begin_fwd2
+            elif match_begin_fwd2 is None:
+                match_begin_fwd = match_begin_fwd1
+            else:
+                # both not none, take the best fit
+                if match_begin_fwd1.errors <= match_begin_fwd2.errors:
+                    match_begin_fwd = match_begin_fwd1
+                else:
+                    match_begin_fwd = match_begin_fwd2
+                    seq1, qual1, seq2, qual2 = seq2, qual2, seq1, qual1
+            i1 = match_begin_fwd.rstop
+            # adapter_begin forward found
+            match_end_fwd = self.match(
+                self.adapters["adapter_sequence_end_reverse"],
+                mbf_genomes.common.reverse_complement(seq1),
+            )
+            if match_end_fwd is not None:
+                # adapter_end forward found
+                print("<<match_end_fwd<<", match_end_fwd)
+                i2 = len(seq1) - match_end_fwd.rstop
+            else:
+                i2 = len(seq1)
+            # now the second read must have the reverse adapters
+            match_end_rev = self.match(
+                self.adapters["adapter_sequence_end_reverse"], seq2
+            )
+            # print("j1", self.adapter_sequence_end_reverse, match_end_rev)
+            if match_end_rev is not None:
+                j1 = match_end_rev.rstop
+                match_begin_rev = self.match(
+                    self.adapters["adapter_sequence_begin"],
+                    mbf_genomes.common.reverse_complement(seq2),
+                )
+
+                if match_begin_rev is None:
+                    j2 = len(seq2)
+                else:
+                    j2 = len(seq2) - match_begin_rev.rstop  # match_begin_rev.rstart
+            else:
+                # reverse read is not matching, discard
+                print("here")
+                return None
+            s1 = seq1[i1:i2]
+            q1 = qual1[i1:i2]
+            s2 = seq2[j1:j2]
+            q2 = qual2[j1:j2]
+            print(seq1)
+            print(seq2)
+            print("----------")
+            print(s1)
+            print(s2)
+            print(i1, i2, j1, j2)
+            # raise ValueError()
+            if s1 == "" or s2 == "":
+                print("here2")
                 return None
             print(i1, i2, j1, j2)
             print((s1.encode(), q1, name1, s2.encode(), q2, name2))
@@ -210,7 +317,12 @@ class CutadaptMatch:
         return filter_func
 
     def count_adapter_occurences(
-        self, r1, r2, output_file, max=100000, dependencies=[],
+        self,
+        r1,
+        r2,
+        output_file,
+        max=100000,
+        dependencies=[],
     ):
         if isinstance(output_file, str):
             outfile = Path(output_file)
