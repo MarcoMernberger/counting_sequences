@@ -9,9 +9,10 @@ from mbf_align import Sample, fastq2
 from typing import List, Optional, Dict, Union, Callable, Tuple
 from pypipegraph import FileGeneratingJob, Job
 from .util import count_raw_input_reads
-from pypipegraph import Job
 from mbf_align import Sample
 from pandas import DataFrame
+from polyleven import levenshtein
+
 
 __author__ = "MarcoMernberger"
 __copyright__ = "MarcoMernberger"
@@ -61,6 +62,7 @@ class SequenceCounter:
         result_folder: str = "results/counts",
         dependencies=[],
         sequence_df_filter: Union[Callable, None] = None,
+        wt: Optional[str] = None,
     ):
         """Contructor"""
         self.name = (
@@ -74,6 +76,7 @@ class SequenceCounter:
         self.sequence_file_path = sequence_file_path
         self.dependencies = dependencies
         self.sequence_df_filter = sequence_df_filter
+        self.wt = wt
 
     @staticmethod
     def combine(
@@ -165,7 +168,7 @@ class SequenceCounter:
             ),
         ]
 
-    def get_trim_sequence_function(self, index_function: Callable) -> Callable:
+    def get_trim_sequence_function(self, index_function: Union[Callable, None]) -> Union[Callable, None]:
         """
         get_trim_sequence_function returns a function that trims a given
         sequence according to the parameters.
@@ -180,8 +183,10 @@ class SequenceCounter:
 
         Returns
         -------
-        Callable
+        Union[Callable, None]
             Callable that trims a given sequence and returns the trimmed string.
+            If no index function is supplied, the sequences re aused as is and
+            this function returns None.
         """
 
         def _trim(fullseq):
@@ -194,6 +199,8 @@ class SequenceCounter:
             trimmed_seq = _trim(fullseq)
             return trimmed_seq[: min(len(trimmed_seq), self.trimmed_length)]
 
+        if index_function is None:
+            return None
         if self.trimmed_length is None:
             return _trim
         else:
@@ -219,6 +226,8 @@ class SequenceCounter:
             df_sequence_df = pd.read_csv(self.sequence_file_path, sep="\t")
             if self.sequence_df_filter is not None:
                 df_sequence_df = self.sequence_df_filter(df_sequence_df)
+            if "Sequence" not in df_sequence_df.columns:
+                raise ValueError(f"No column named 'Sequence' in file {str(self.sequence_file_path)}. Don't know what to count.")
             if "Name" not in df_sequence_df.columns:
                 try:
                     df_sequence_df["Name"] = [
@@ -231,41 +240,46 @@ class SequenceCounter:
                 except KeyError:
                     print("You need a Name column to identify all the sequences.")
                     raise
-            df_sequence_df = df_sequence_df.rename(
-                columns={"Sequence": "Full Sequence"}
-            )
-            sequences = []
-            deduplicated = []
-            seen = collections.defaultdict(set)
             index_function = self._get_index_function(self.seqs_to_trim_predefined)
-            trim_function = self.get_trim_sequence_function(index_function)
-            df_sequence_df["Sequence"] = df_sequence_df["Full Sequence"].apply(
-                trim_function
-            )
-            df_sequence_df["Duplicate"] = df_sequence_df.duplicated(
-                subset="Sequence", keep="first"
-            )
-            df_sequence_df["Duplicate Full"] = df_sequence_df.duplicated(
-                subset="Full Sequence", keep="first"
-            )
+            trim_function = self.get_trim_sequence_function(index_function)  # TODO: ensure trim_function can be None
+            
+            if trim_function is not None:
+                df_sequence_df = df_sequence_df.rename(
+                    columns={"Sequence": "Full Sequence"}
+                )
+                sequences = []
+                deduplicated = []
+                seen = collections.defaultdict(set)
+                df_sequence_df["Sequence"] = df_sequence_df["Full Sequence"].apply(
+                    trim_function
+                )
+            if "Duplicate" not in df_sequence_df.columns:
+                df_sequence_df["Duplicate"] = df_sequence_df.duplicated(
+                    subset="Sequence", keep="first"
+                )
+            if "Duplicate Full" not in df_sequence_df.columns:
+                df_sequence_df["Duplicate Full"] = df_sequence_df.duplicated(
+                    subset="Full Sequence", keep="first"
+                )
             for _, row in df_sequence_df.iterrows():
                 fullseq = row["Full Sequence"]
                 deduplicated.append(fullseq not in seen)
                 seen[fullseq].add(row["Name"])
                 seq = trim_function(fullseq)
                 sequences.append(seq)
-            df_sequence_df["Duplicate Count"] = 1
-            df_sequence_df["Duplicate Entries"] = ""
-            for _, grouped_duplicates in df_sequence_df.groupby("Full Sequence"):
-                if len(grouped_duplicates) > 1:
-                    df_sequence_df.loc[
-                        grouped_duplicates.index, "Duplicate Entries"
-                    ] = ",".join(grouped_duplicates["Name"])
-                    df_sequence_df.loc[
-                        grouped_duplicates.index, "Duplicate Count"
-                    ] = len(grouped_duplicates)
-            df_sequence_df["Deduplicated"] = deduplicated
-            df_sequence_df.to_csv(outputfile, sep="\t", index=False)
+            if "Deduplicated" not in df_sequence_df.columns:
+                df_sequence_df["Duplicate Count"] = 1
+                df_sequence_df["Duplicate Entries"] = ""
+                for _, grouped_duplicates in df_sequence_df.groupby("Full Sequence"):
+                    if len(grouped_duplicates) > 1:
+                        df_sequence_df.loc[
+                            grouped_duplicates.index, "Duplicate Entries"
+                        ] = ",".join(grouped_duplicates["Name"])
+                        df_sequence_df.loc[
+                            grouped_duplicates.index, "Duplicate Count"
+                        ] = len(grouped_duplicates)
+                df_sequence_df["Deduplicated"] = deduplicated
+                df_sequence_df.to_csv(outputfile, sep="\t", index=False)
             try:
                 pd.testing.assert_frame_equal(
                     df_sequence_df[["Duplicate"]], df_sequence_df[["Duplicate Full"]]
@@ -435,7 +449,9 @@ class SequenceCounter:
             index_function = self._get_index_function(self.seqs_to_trim_reads)
             trim_function = self.get_trim_sequence_function(index_function)
             for _, row in df_read_counter.iterrows():
-                seq1 = row["Sequence"]
+                if type(row["Sequence"]) == float:
+                    continue
+                seq1 = str(row["Sequence"])
                 count = row["Count"]
                 seq = trim_function(seq1)
                 if len(seq) == 0:
@@ -444,7 +460,7 @@ class SequenceCounter:
             df = pd.DataFrame.from_dict(
                 {"Sequence": list(counter.keys()), "Count": list(counter.values())}
             )
-            df.to_csv(output_file, sep="\t")
+            df.to_csv(output_file, sep="\t", index=False)
 
         return (
             FileGeneratingJob(output_file, __write)
@@ -455,7 +471,7 @@ class SequenceCounter:
 
     def _get_index_function(
         self, start_stop_seq_to_trim: Union[Tuple[str, str], None]
-    ) -> Callable:
+    ) -> Union[Callable, None]:
         """
         _get_index_function returns an index function that returns an index
         to trim a sequnece by.
@@ -471,8 +487,9 @@ class SequenceCounter:
 
         Returns
         -------
-        Callable
-            Index function that returns the index to trim by.
+        Union[Callable, None]
+            Index function that returns the index to trim by. May be None, 
+            then the Sequences are used as is.
         """
         start, stop = None, None
         if start_stop_seq_to_trim is not None:
@@ -491,8 +508,9 @@ class SequenceCounter:
             return 0
 
         if start_stop_seq_to_trim is None:
-            first_index_function = __return_null
-            second_index_function = __return_length
+            # first_index_function = __return_null
+            # second_index_function = __return_length
+            return None
         else:
             if start is None or start == "":
                 first_index_function = __return_null
@@ -561,6 +579,7 @@ class SequenceCounter:
         df_sequence_df = pd.read_csv(
             self.result_dir / f"{self.name}_predefined_sequences.tsv", sep="\t"
         )
+        print(read_counter_file)
         counts = [counter[seq] for seq in df_sequence_df["Sequence"]]
         result = df_sequence_df.copy()
         result["Read Count"] = counts
@@ -596,7 +615,10 @@ class SequenceCounter:
             to_df["Read Count"].append(count)
             to_df["Frequency"].append(count / total_counts)
             to_df["Sequence"].append(seq)
-
+        if self.wt is not None:
+            to_df["Levenshtein(wt)"] = [
+                levenshtein(self.wt, seq) for seq in to_df["Sequence"]
+            ]
         df_unmatched = pd.DataFrame(to_df)
         return result, df_unmatched
 

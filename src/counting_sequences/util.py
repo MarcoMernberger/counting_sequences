@@ -1,11 +1,14 @@
 import gzip
 import subprocess
+import pypipegraph as ppg
+import pandas as pd
 from gzip import GzipFile
 from typing import BinaryIO, Union
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Callable
 from pypipegraph import Job
-import pypipegraph as ppg
+from mbf_align import Sample
+from pandas import DataFrame
 
 
 def get_fastq_iterator(filepath: Path):
@@ -54,7 +57,13 @@ def count_raw_input_reads(gz_filename1):
     return x
 
 
-def generate_stitched_fastq(output_file: Path, r1: Path, r2: Path, dependencies: List[Job] = [], options: Dict[str, str] = {}):
+def generate_stitched_fastq(
+    output_file: Path,
+    r1: Path,
+    r2: Path,
+    dependencies: List[Job] = [],
+    options: Dict[str, str] = {},
+):
     """
     generate_stitched_fastq wrapper for ngmerge.
 
@@ -83,7 +92,7 @@ def generate_stitched_fastq(output_file: Path, r1: Path, r2: Path, dependencies:
     def __dump():
         if not output_file.exists():
             cmd = [
-                "/project/code/NGmerge/NGmerge",
+                "NGmerge",
                 "-1",
                 str(r1),
                 "-2",
@@ -97,8 +106,47 @@ def generate_stitched_fastq(output_file: Path, r1: Path, r2: Path, dependencies:
                     cmd.append(k)
                 else:
                     cmd.extend([k, v])
-            print(" ".join(cmd))
-            subprocess.check_call(cmd)
+            try:
+                subprocess.check_call(cmd)
+            except subprocess.CalledProcessError:
+                print(" ".join(cmd))
+                raise
 
     job = ppg.FileGeneratingJob(output_file, __dump).depends_on(deps)
     return job
+
+
+def get_reads_for_lanes_df(
+    outfile: Path, lanes: List[Sample], dependencies: List[Job] = []
+) -> Job:
+    #    print_read_loss checks for each lane the number of reads present and writes that to a file.
+    outfile.parent.mkdir(exist_ok=True, parents=True)
+    df_calc_func = get_reads_for_lanes_callable(lanes, dependencies)
+
+    def __dump():
+        df = df_calc_func()
+        df.to_csv(outfile, index=False, sep="\t")
+
+    return ppg.FileGeneratingJob(outfile, __dump).depends_on(dependencies)
+
+
+def get_reads_for_lanes_callable(
+    lanes: List[Sample], dependencies: List[Job] = []
+) -> Callable:
+    def calc():
+        reads = {"Sample": [], "Reads": []}
+        for sample_name in lanes:
+            r1 = list(lanes[sample_name].get_aligner_input_filenames())[0]
+            cmd = ["wc", "-l", str(r1)]
+            try:
+                outp = subprocess.check_output(cmd)
+                count = int(outp.decode().split()[0]) / 4
+            except subprocess.CalledProcessError:
+                print(" ".join(cmd))
+                raise
+            reads["Sample"].append(sample_name)
+            reads["Reads"].append(count)
+        df = pd.DataFrame(reads)
+        return df
+
+    return calc
