@@ -6,10 +6,10 @@ import cutadapt.align
 import mbf_align
 import pandas as pd
 from pathlib import Path
-from .util import read_fastq_iterator, get_fastq_iterator
+from .util import read_fastq_iterator, get_fastq_iterator, reverse_complement
 from typing import Callable, List, Union, Optional
 from pypipegraph import Job
-from mbf_align.fastq2 import iterate_fastq, reverse_complement
+from mbf_align.fastq2 import iterate_fastq
 from mbf_align import Sample
 
 

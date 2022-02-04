@@ -9,6 +9,21 @@ from typing import List, Dict, Callable
 from pypipegraph import Job
 from mbf_align import Sample
 from pandas import DataFrame
+try:
+    import string
+
+    maketrans = string.maketrans
+except (ImportError, NameError, AttributeError):
+    maketrans = bytes.maketrans
+
+
+rev_comp_table = maketrans(
+    b"ACBDGHKMNSRUTWVYacbdghkmnsrutwvy", b"TGVHCDMKNSYAAWBRTGVHCDMKNSYAAWBR"
+)
+
+
+def reverse_complement(seq):
+    return seq[::-1].translate(rev_comp_table)
 
 
 def get_fastq_iterator(filepath: Path):
