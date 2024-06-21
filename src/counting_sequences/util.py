@@ -7,8 +7,9 @@ from typing import BinaryIO, Union
 from pathlib import Path
 from typing import List, Dict, Callable
 from pypipegraph import Job
-from mbf_align import Sample
+from mbf.align import Sample
 from pandas import DataFrame
+
 try:
     import string
 

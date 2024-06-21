@@ -4,12 +4,12 @@ import collections
 import pypipegraph as ppg
 import pandas as pd
 import numpy as np
+import mbf
 from pathlib import Path
-from mbf_align import Sample, fastq2
+from mbf.align import Sample, fastq2
 from typing import List, Optional, Dict, Union, Callable, Tuple
 from pypipegraph import FileGeneratingJob, Job
 from .util import count_raw_input_reads
-from mbf_align import Sample
 from pandas import DataFrame
 from polyleven import levenshtein
 
@@ -168,7 +168,9 @@ class SequenceCounter:
             ),
         ]
 
-    def get_trim_sequence_function(self, index_function: Union[Callable, None]) -> Union[Callable, None]:
+    def get_trim_sequence_function(
+        self, index_function: Union[Callable, None]
+    ) -> Union[Callable, None]:
         """
         get_trim_sequence_function returns a function that trims a given
         sequence according to the parameters.
@@ -227,7 +229,9 @@ class SequenceCounter:
             if self.sequence_df_filter is not None:
                 df_sequence_df = self.sequence_df_filter(df_sequence_df)
             if "Sequence" not in df_sequence_df.columns:
-                raise ValueError(f"No column named 'Sequence' in file {str(self.sequence_file_path)}. Don't know what to count.")
+                raise ValueError(
+                    f"No column named 'Sequence' in file {str(self.sequence_file_path)}. Don't know what to count."
+                )
             if "Name" not in df_sequence_df.columns:
                 try:
                     df_sequence_df["Name"] = [
@@ -241,8 +245,10 @@ class SequenceCounter:
                     print("You need a Name column to identify all the sequences.")
                     raise
             index_function = self._get_index_function(self.seqs_to_trim_predefined)
-            trim_function = self.get_trim_sequence_function(index_function)  # TODO: ensure trim_function can be None
-            
+            trim_function = self.get_trim_sequence_function(
+                index_function
+            )  # TODO: ensure trim_function can be None
+
             if trim_function is not None:
                 df_sequence_df = df_sequence_df.rename(
                     columns={"Sequence": "Full Sequence"}
@@ -488,7 +494,7 @@ class SequenceCounter:
         Returns
         -------
         Union[Callable, None]
-            Index function that returns the index to trim by. May be None, 
+            Index function that returns the index to trim by. May be None,
             then the Sequences are used as is.
         """
         start, stop = None, None

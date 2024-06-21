@@ -10,7 +10,7 @@ import numpy as np
 from typing import List
 from pathlib import Path
 from pypipegraph import Job
-from mbf_align import Sample
+from mbf.align import Sample
 from .util import get_reads_for_lanes_callable
 from mplots import MPPlotJob
 
