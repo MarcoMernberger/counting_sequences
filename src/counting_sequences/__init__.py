@@ -18,3 +18,4 @@ from .util import (
     get_reads_for_lanes_callable,
     get_reads_for_lanes_df,
 )
+from ngmerge import ngmerge
