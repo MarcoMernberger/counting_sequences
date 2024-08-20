@@ -1,14 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import collections
-import pypipegraph as ppg
+import pypipegraph2 as ppg
 import pandas as pd
 import numpy as np
 import mbf
 from pathlib import Path
 from mbf.align import Sample, fastq2
 from typing import List, Optional, Dict, Union, Callable, Tuple
-from pypipegraph import FileGeneratingJob, Job
+from pypipegraph2 import FileGeneratingJob, Job
 from .util import count_raw_input_reads, get_sequence_df_from_excel_file
 from pandas import DataFrame
 from polyleven import levenshtein

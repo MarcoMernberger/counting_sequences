@@ -3,17 +3,28 @@ counting_sequences
 ==================
 
 
-Add a short description here!
+This contains a simple sequence counter intended to count the occurences of 
+a set of predefined sequences in a fastq file.
+
 
 
 Description
 ===========
 
-A longer description of your project goes here...
+This contains a simple sequence counter intended to count the occurences of 
+a set of predefined sequences in a fastq file. First, all occuring read sequences
+are counted. Then, these counts are mapped to a set of predefined sequences.
+
+It also contains a wrapper for NGmerge to merge overlapping paired-end
+sequenced reads.
+
+Reads and sequences can also be trimmed to exclude flanking regions that
+are not of interest, e.g. adapters and primers.
+
 
 
 Note
 ====
 
-This project has been set up using PyScaffold 3.1. For details and usage
-information on PyScaffold see https://pyscaffold.org/.
+This project is intended for use with pypiegraph2 and mbf packages available
+on pypi and github for job generation and scheduling.

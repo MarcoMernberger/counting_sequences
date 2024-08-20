@@ -21,7 +21,7 @@ except VersionConflict:
 
 setup(
     name='counting_sequences',
-    version='1.0.0',
+    version='0.5.0',
 )
 
 if __name__ == "__main__":
