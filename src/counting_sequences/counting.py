@@ -108,7 +108,7 @@ class SequenceCounter:
         """
         outfile.parent.mkdir(parents=True, exist_ok=True)
 
-        def dump():
+        def dump(outfile):
             concats = []
             for sample_name in inputfiles:
                 fileobj = inputfiles[sample_name]
@@ -130,7 +130,7 @@ class SequenceCounter:
             List of dependencies.
         """
         return self.dependencies + [
-            ppg.FileTimeInvariant(self.sequence_file_path),
+            ppg.FileInvariant(self.sequence_file_path),
             ppg.FunctionInvariant(
                 f"{self.name}_write_predefined_sequences",
                 self.write_predefined_sequences,
@@ -258,7 +258,7 @@ class SequenceCounter:
         """
         outputfile = self.result_dir / f"{self.name}_predefined_sequences.tsv"
 
-        def __dump():
+        def __dump(outputfile):
             df_sequence_df = self.get_sequence_df()
             if self.sequence_df_filter is not None:
                 df_sequence_df = self.sequence_df_filter(df_sequence_df)
@@ -352,7 +352,7 @@ class SequenceCounter:
         """
         output_file = self.result_dir / f"{raw_lane.name}_{self.name}_all_reads.tsv"
 
-        def __write():
+        def __write(output_file):
             df_counter = self.count_fastq(raw_lane)
             df_counter = df_counter.sort_values("Count", ascending=False)
             df_counter.to_csv(output_file, sep="\t", index=False)
@@ -429,7 +429,8 @@ class SequenceCounter:
             / f"{raw_lane.name}_{self.name}_sequence_count_unmatched.tsv"
         )
 
-        def __write():
+        def __write(output_files):
+            output_file, output_file2 = output_files 
             df_ret, df_unmatched = self.count_samples_fast(raw_lane, row_order)
             df_ret.to_csv(output_file, sep="\t", index=False)
             df_unmatched.to_csv(output_file2, sep="\t", index=False)
@@ -471,7 +472,7 @@ class SequenceCounter:
             self.result_dir / f"{raw_lane.name}_{self.name}_all_reads_trimmed.tsv"
         )
 
-        def __write():
+        def __write(output_file):
             read_counter_file = (
                 self.result_dir / f"{raw_lane.name}_{self.name}_all_reads.tsv"
             )
@@ -684,7 +685,7 @@ class SequenceCounter:
             / f"{raw_lane.name}_{self.name}_sequence_count_unmatched.fastq"
         )
 
-        def __dump_fastq():
+        def __dump_fastq(outfile):
             df = pd.read_csv(infile, sep="\t")
             df.index = df["Name"]
             with outfile.open("w") as outp:
@@ -706,7 +707,7 @@ def grep_unmatched_reads(
 ) -> Job:
     outfile.parent.mkdir(parents=True, exist_ok=True)
 
-    def __dump():
+    def __dump(outfile):
         full_fasta_file = raw_lane.get_aligner_input_filenames()[0]
         df = pd.read_csv(df_file, sep="\t")
         check = {}

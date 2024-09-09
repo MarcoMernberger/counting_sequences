@@ -53,7 +53,7 @@ def ngmerge(
     deps = dependencies
     deps.append(ppg.ParameterInvariant(f"PI_{output_file}", list(options)))
 
-    def __dump():
+    def __dump(output_file):
         if not output_file.exists():
             cmd = [
                 "NGmerge",
