@@ -21,4 +21,8 @@ except VersionConflict:
 
 
 if __name__ == "__main__":
-    setup(use_pyscaffold=False)
+    setup(
+        name='counting_sequences',
+        version='0.5.0',
+        use_pyscaffold=False
+    )

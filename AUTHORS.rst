@@ -2,4 +2,4 @@
 Contributors
 ============
 
-* MarcoMernberger <marco.mernberger@gmail.com>
+* Marco Mernberger <marco.mernberger@gmail.com>

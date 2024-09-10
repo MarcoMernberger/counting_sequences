@@ -5,7 +5,7 @@ import pandas as pd
 from gzip import GzipFile
 from typing import BinaryIO, Union
 from pathlib import Path
-from typing import List, Dict, Callable
+from typing import List, Callable
 from pypipegraph import Job
 from mbf.align import Sample
 from pandas import DataFrame
@@ -73,65 +73,6 @@ def count_raw_input_reads(gz_filename1):
     return x
 
 
-def generate_stitched_fastq(
-    output_file: Path,
-    r1: Path,
-    r2: Path,
-    dependencies: List[Job] = [],
-    options: Dict[str, str] = {},
-):
-    """
-    generate_stitched_fastq wrapper for ngmerge.
-
-    Parameters
-    ----------
-    output_file : Path
-        Output file path for the new fastq file.
-    r1 : Path
-        Path to R1 file.
-    r2 : Path
-        Path to R2 file.
-    dependencies : List[Job], optional
-        List of dependencies, by default [].
-    options : Dict[str, str], optional
-        Additional options to pass to ngmerge, by default {}.
-
-    Returns
-    -------
-    Job
-        FileGeneratingJob that creates the merged bam file.
-    """
-    output_file.parent.mkdir(parents=True, exist_ok=True)
-    deps = dependencies
-    deps.append(ppg.ParameterInvariant(f"PI_{output_file}", list(options)))
-
-    def __dump():
-        if not output_file.exists():
-            cmd = [
-                "NGmerge",
-                "-1",
-                str(r1),
-                "-2",
-                str(r2),
-                "-s",
-                "-o",
-                str(output_file),
-            ]
-            for k, v in options.items():
-                if v == "":
-                    cmd.append(k)
-                else:
-                    cmd.extend([k, v])
-            try:
-                subprocess.check_call(cmd)
-            except subprocess.CalledProcessError:
-                print(" ".join(cmd))
-                raise
-
-    job = ppg.FileGeneratingJob(output_file, __dump).depends_on(deps)
-    return job
-
-
 def get_reads_for_lanes_df(
     outfile: Path, lanes: List[Sample], dependencies: List[Job] = []
 ) -> Job:
@@ -166,3 +107,10 @@ def get_reads_for_lanes_callable(
         return df
 
     return calc
+
+
+def get_sequence_df_from_excel_file(
+    sequence_file_path: Path, sheet_name: str
+) -> DataFrame:
+    """Reads a table from excel file with a given sheet name"""
+    return pd.read_excel(sequence_file_path, sheet_name=sheet_name)

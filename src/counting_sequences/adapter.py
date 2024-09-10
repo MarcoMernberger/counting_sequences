@@ -1,9 +1,9 @@
 import pypipegraph as ppg
+import mbf
 import mbf.genomes
 import collections
 import cutadapt
 import cutadapt.align
-import mbf.align
 import pandas as pd
 from pathlib import Path
 from .util import read_fastq_iterator, get_fastq_iterator, reverse_complement
@@ -127,7 +127,7 @@ class Paired_Filtered_Trimmed_From_Job(mbf.align.fastq2.Straight):
         # check lengths and raise if we do not encounter that in threshold*100 %
         r1, r2 = self.sample.get_aligner_input_filenames()
 
-        def check():
+        def check(log_file):
             forwards = collections.Counter()
             reverses = collections.Counter()
             start = self.wt[:10].encode()
@@ -135,7 +135,7 @@ class Paired_Filtered_Trimmed_From_Job(mbf.align.fastq2.Straight):
             start_reverse = reverse_complement(self.wt[:10]).encode()
             end_reverse = reverse_complement(self.wt[-10:]).encode()
             # check forward
-            with self.log_file.open("w") as outp:
+            with log_file.open("w") as outp:
                 total, found = 0, 0
                 # for inp in [r1, r2]:
                 for tup in zip(iterate_fastq(r1, False), iterate_fastq(r2, False)):
