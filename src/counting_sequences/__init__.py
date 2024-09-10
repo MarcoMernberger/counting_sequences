@@ -10,7 +10,7 @@ except DistributionNotFound:
 finally:
     del get_distribution, DistributionNotFound
 
-from .counting import SequenceCounter
+from .counting import SequenceCounter, SequenceCounter2
 from .adapter import CutadaptMatch, Paired_Filtered_Trimmed_From_Job
 from .plots import plot_count_corr, plot_reads_for_lanes
 from .util import (

@@ -1,16 +1,16 @@
 import pypipegraph as ppg
-import mbf_genomes
+import mbf.genomes
 import collections
 import cutadapt
 import cutadapt.align
-import mbf_align
+import mbf.align
 import pandas as pd
 from pathlib import Path
 from .util import read_fastq_iterator, get_fastq_iterator, reverse_complement
 from typing import Callable, List, Union, Optional
 from pypipegraph import Job
-from mbf_align.fastq2 import iterate_fastq
-from mbf_align import Sample
+from mbf.align.fastq2 import iterate_fastq
+from mbf.align import Sample
 
 
 AdapterMatch = collections.namedtuple(
@@ -18,7 +18,7 @@ AdapterMatch = collections.namedtuple(
 )
 
 
-class Paired_Filtered_Trimmed_From_Job(mbf_align.fastq2.Straight):
+class Paired_Filtered_Trimmed_From_Job(mbf.align.fastq2.Straight):
     """Filter reads with a callback func that takes seq1,qual1, name1,
     seq2, qual2, name2 and returns truncated reads/qualities
     """
@@ -31,10 +31,10 @@ class Paired_Filtered_Trimmed_From_Job(mbf_align.fastq2.Straight):
         threshold: float = 0.75,
         sampling: int = 10000,
         dependencies: List = [],
-        adapter_max_len: Optional[int] = None
+        adapter_max_len: Optional[int] = None,
     ):
         self.dependencies = dependencies
-        mbf_align.fastq2.Straight.__init__(self)
+        mbf.align.fastq2.Straight.__init__(self)
         self.sample = sample
         self.exon = exon
         self.threshold = threshold
@@ -151,7 +151,9 @@ class Paired_Filtered_Trimmed_From_Job(mbf_align.fastq2.Straight):
                             index1_start = max(0, index1_end - self.adapter_max_len)
                         if self.adapter_max_len is not None:
                             index2_start = max(0, index2_end - self.adapter_max_len)
-                        forwards[seq1[index1_start:index1_end]] += 1  # this will take the whole beginning of the read. since we apparently cannot expect any kind of rational design, we have to assume that the relevant part will start at the very end of the read
+                        forwards[
+                            seq1[index1_start:index1_end]
+                        ] += 1  # this will take the whole beginning of the read. since we apparently cannot expect any kind of rational design, we have to assume that the relevant part will start at the very end of the read
                         reverses[seq2[index2_start:index2_end]] += 1
                         found += 1
                     else:
@@ -220,10 +222,10 @@ class CutadaptMatch:
         self.adapter_sequence_end = adapter_end
         self.maximal_error_rate = cutadapt_error_rate
         self.min_overlap = min_overlap
-        self.adapter_sequence_begin_reverse = mbf_genomes.common.reverse_complement(
+        self.adapter_sequence_begin_reverse = mbf.genomes.common.reverse_complement(
             self.adapter_sequence_begin
         )
-        self.adapter_sequence_end_reverse = mbf_genomes.common.reverse_complement(
+        self.adapter_sequence_end_reverse = mbf.genomes.common.reverse_complement(
             self.adapter_sequence_end
         )
         self.where_fwd = (
@@ -298,7 +300,7 @@ class CutadaptMatch:
             # adapter_begin forward found
             match_end_fwd = self.match(
                 self.adapters["adapter_sequence_end_reverse"],
-                mbf_genomes.common.reverse_complement(seq1),
+                mbf.genomes.common.reverse_complement(seq1),
             )
             if match_end_fwd is not None:
                 # adapter_end forward found
@@ -313,7 +315,7 @@ class CutadaptMatch:
                 j1 = match_end_rev.rstop
                 match_begin_rev = self.match(
                     self.adapters["adapter_sequence_begin"],
-                    mbf_genomes.common.reverse_complement(seq2),
+                    mbf.genomes.common.reverse_complement(seq2),
                 )
 
                 if match_begin_rev is None:
@@ -367,7 +369,7 @@ class CutadaptMatch:
             # adapter_begin forward found
             match_end_fwd = self.match(
                 self.adapters["adapter_sequence_end_reverse"],
-                mbf_genomes.common.reverse_complement(seq1),
+                mbf.genomes.common.reverse_complement(seq1),
             )
             if match_end_fwd is not None:
                 # adapter_end forward found
@@ -384,7 +386,7 @@ class CutadaptMatch:
                 j1 = match_end_rev.rstop
                 match_begin_rev = self.match(
                     self.adapters["adapter_sequence_begin"],
-                    mbf_genomes.common.reverse_complement(seq2),
+                    mbf.genomes.common.reverse_complement(seq2),
                 )
 
                 if match_begin_rev is None:
