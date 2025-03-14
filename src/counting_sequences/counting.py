@@ -752,7 +752,8 @@ class SequenceCounter2:
         self,
         sequence_file_path: str,
         name: str = None,
-        read_processor: Optional[Callable] = None,
+        seqs_to_trim_reads: Optional[Tuple[str]] = None,
+        # read_processor: Optional[Callable] = None,
         seqs_to_trim_predefined: Optional[Tuple[str]] = None,
         trimmed_length: int = None,
         result_folder: str = "results/counts",
@@ -844,7 +845,7 @@ class SequenceCounter2:
         """
         output_file = self.result_dir / f"{raw_lane.name}_{self.name}_all_reads.tsv"
 
-        def __write():
+        def __write(output_file):
             df_counter = self.count_fastq_paired(raw_lane)
             df_counter = df_counter.sort_values("Count", ascending=False)
             df_counter.to_csv(output_file, sep="\t", index=False)
