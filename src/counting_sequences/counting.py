@@ -786,11 +786,12 @@ class SequenceCounter2(SequenceCounter):
         self.dependencies = dependencies
         self.sequence_df_filter = sequence_df_filter
         self.wt = wt
+        self.is_paired = is_paired
         self.id_column = id_column
         self.sequence_column = sequence_column
         self.sheet_name = sheet_name
 
-    def count_fastq(self, raw_lane: Sample) -> DataFrame:
+    def count_fastq_paired(self, raw_lane: Sample) -> DataFrame:
         """
         count_fastq counts all occuring sequences in a fastq file.
 
@@ -810,46 +811,26 @@ class SequenceCounter2(SequenceCounter):
             A DataFrame containing the trimmed sequences and corresponding counts.
         """
         counter_to_df: Dict[str, List] = {
-            "Sequence": [],
+            "R1": [],
+            "R2": [],
             "Count": [],
-            "Name": [],
+            "R1 Name": [],
+            "R2 Name": [],
         }
         counter: Dict[str, int] = collections.Counter()
-        aligner_input_files = raw_lane.get_aligner_input_filenames()
-        paired = len(aligner_input_files) == 2
-        read_iterator = get_fastq_iterator(paired)
+        read_iterator = get_fastq_iterator(True)
         examples = {}
         for fragment in read_iterator(raw_lane.get_aligner_input_filenames()):
-            key = tuple(read.Sequence for read in fragment)
+            key = (fragment.Read1.Sequence, fragment.Read2.Sequence)
             counter[key] += 1
             examples[key] = tuple(read.Name for read in fragment)
         for seqs in counter:
-            counter_to_df["Sequence"].append(",".join(seqs))  # may be tuple
+            counter_to_df["R1"].append(seqs[0])
+            counter_to_df["R2"].append(seqs[1])
             counter_to_df["Count"].append(counter[seqs])
-            counter_to_df["Name"].append(",".join(examples[seqs]))
-        if paired:
-            data = [
-                (",".join(seqs), count, ",".join(names), *seqs, *names)
-                for seqs, count, names in zip(
-                    counter_to_df["Sequence"],
-                    counter_to_df["Count"],
-                    counter_to_df["Name"],
-                )
-            ]
-            df_counter = pd.DataFrame(
-                data,
-                columns=[
-                    "Sequence",
-                    "Count",
-                    "Name",
-                    "Sequence R1",
-                    "Sequence R1",
-                    "Name R1",
-                    "Name R2",
-                ],
-            )
-        else:
-            df_counter = pd.DataFrame(counter_to_df)
+            counter_to_df["R1 Name"].append(examples[seqs][0])
+            counter_to_df["R2 Name"].append(examples[seqs][1])
+        df_counter = pd.DataFrame(counter_to_df)
         return df_counter
 
     def write_fastq_count(
@@ -879,7 +860,10 @@ class SequenceCounter2(SequenceCounter):
         output_file = self.result_dir / f"{raw_lane.name}_{self.name}_all_reads.tsv"
 
         def __write(output_file):
-            df_counter = self.count_fastq(raw_lane)
+            if self.is_paired:
+                df_counter = self.count_fastq_paired(raw_lane)
+            else:
+                df_counter = self.count_fastq_single(raw_lane)
             df_counter = df_counter.sort_values("Count", ascending=False)
             df_counter.to_csv(output_file, sep="\t", index=False)
 
