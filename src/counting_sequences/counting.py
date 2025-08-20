@@ -765,7 +765,6 @@ class SequenceCounter2:
         self.name = (
             name if name is not None else f"SC_{seqs_to_trim_reads}_{trimmed_length}"
         )
-        self.seqs_to_trim_reads = seqs_to_trim_reads
         self.seqs_to_trim_predefined = seqs_to_trim_predefined
         self.trimmed_length = trimmed_length
         self.result_dir = Path(result_folder)
@@ -818,6 +817,45 @@ class SequenceCounter2:
         df_counter = pd.DataFrame(counter_to_df)
         return df_counter
 
+    def count_fastq_single(self, raw_lane: Sample) -> DataFrame:
+        """
+        count_fastq counts all occuring sequences in a fastq file.
+
+        Very basic counter to count all occuring sequences in a fastq file.
+        In addition, the reads are trimmed in an equal manner to the predefined
+        sequences to speed up counting by eliminating the need for substring
+        matching.
+
+        Parameters
+        ----------
+        raw_lane : Sample
+            Sample to count.
+
+        Returns
+        -------
+        DataFrame
+            A DataFrame containing the trimmed sequences and corresponding counts.
+        """
+        counter_to_df: Dict[str, List] = {
+            "R1": [],
+            "Count": [],
+            "R1 Name": [],
+        }
+        counter: Dict[str, int] = collections.Counter()
+        read_iterator = get_fastq_iterator(False)
+        examples = {}
+        for fragment in read_iterator(raw_lane.get_aligner_input_filenames()):
+            key = fragment.Read1.Sequence
+            counter[key] += 1
+            examples[key] = fragment.Read1.Name
+        for seqs in counter:
+            counter_to_df["R1"].append(seqs)
+            counter_to_df["Count"].append(counter[seqs])
+            counter_to_df["R1 Name"].append(examples[seqs])
+        df_counter = pd.DataFrame(counter_to_df)
+        return df_counter
+
+
     def write_fastq_count(
         self, raw_lane: Sample, dependencies: List[ppg.Job] = []
     ) -> FileGeneratingJob:
@@ -844,8 +882,11 @@ class SequenceCounter2:
         """
         output_file = self.result_dir / f"{raw_lane.name}_{self.name}_all_reads.tsv"
 
-        def __write():
-            df_counter = self.count_fastq_paired(raw_lane)
+        def __write(output_file):
+            if self.is_paired:
+                df_counter = self.count_fastq_paired(raw_lane)
+            else:
+                df_counter = self.count_fastq_single(raw_lane)
             df_counter = df_counter.sort_values("Count", ascending=False)
             df_counter.to_csv(output_file, sep="\t", index=False)
 
