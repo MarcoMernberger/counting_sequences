@@ -4,12 +4,13 @@
 """plots.py: Contains plots to visualize counter results."""
 import matplotlib
 import matplotlib.pyplot as plt
-import pypipegraph as ppg
+
+# import pypipegraph as ppg
 import pandas as pd
 import numpy as np
 from typing import List
 from pathlib import Path
-from pypipegraph import Job
+from pypipegraph import Job, MultiFileGeneratingJob, FileGeneratingJob
 from mbf.align import Sample
 from .util import get_reads_for_lanes_callable
 
@@ -24,7 +25,7 @@ __license__ = "mit"
 def plot_count_corr(
     csv1: Path,
     csv2: Path,
-    dependencies: List[ppg.Job] = [],
+    dependencies: List[Job] = [],
     index_column: str = "Name",
     count_Column: str = "Read Count",
 ):
@@ -35,10 +36,12 @@ def plot_count_corr(
         df1 = pd.read_csv(csv1, sep="\t")
         df2 = pd.read_csv(csv2, sep="\t")
         df1["index"] = [
-            f"{sample} {name}" for sample, name in zip(df1["Sample"], df1[index_column])
+            f"{sample} {name}"
+            for sample, name in zip(df1["Sample"], df1[index_column])
         ]
         df2["index"] = [
-            f"{sample} {name}" for sample, name in zip(df2["Sample"], df2[index_column])
+            f"{sample} {name}"
+            for sample, name in zip(df2["Sample"], df2[index_column])
         ]
         df1 = df1.set_index("index")
         df2 = df2.set_index("index")
@@ -50,20 +53,25 @@ def plot_count_corr(
         print(df1[count_Column])
         print(df2.loc[df1.index][count_Column])
         f = plt.figure()
-        plt.plot(df1[count_Column], df2.loc[df1.index][count_Column], marker=".", ls="")
+        plt.plot(
+            df1[count_Column],
+            df2.loc[df1.index][count_Column],
+            marker=".",
+            ls="",
+        )
         plt.title(f"Correlation of counts {csv1.name} vs {csv2.name}")
         plt.xlabel(f"Count {csv1.name}")
         plt.xlabel(f"Count {csv2.name}")
         plt.tight_layout()
         f.savefig(outfile)
 
-    return ppg.FileGeneratingJob(outfile, __plot).depends_on(dependencies)
+    return FileGeneratingJob(outfile, __plot).depends_on(dependencies)
 
 
 def plot_count_corr_m(
     csv1: Path,
     csv2: Path,
-    dependencies: List[ppg.Job] = [],
+    dependencies: List[Job] = [],
     index_column: str = "Name",
     count_Column: str = "Read Count",
     sample_column: str = "Sample",
@@ -75,24 +83,31 @@ def plot_count_corr_m(
         df1 = pd.read_csv(csv1, sep="\t")
         df2 = pd.read_csv(csv2, sep="\t")
         df1["index"] = [
-            f"{sample} {name}" for sample, name in zip(df1["Sample"], df1[index_column])
+            f"{sample} {name}"
+            for sample, name in zip(df1["Sample"], df1[index_column])
         ]
         df2["index"] = [
-            f"{sample} {name}" for sample, name in zip(df2["Sample"], df2[index_column])
+            f"{sample} {name}"
+            for sample, name in zip(df2["Sample"], df2[index_column])
         ]
         df1 = df1.set_index("index")
         df2 = df2.set_index("index")
         print(df1.shape, df2.shape)
         raise ValueError()
         f = plt.figure()
-        plt.plot(df1[count_Column], df2.loc[df1.index][count_Column], marker=".", ls="")
+        plt.plot(
+            df1[count_Column],
+            df2.loc[df1.index][count_Column],
+            marker=".",
+            ls="",
+        )
         plt.title(f"Correlation of counts {csv1.name} vs {csv2.name}")
         plt.xlabel(f"Count {csv1.name}")
         plt.xlabel(f"Count {csv2.name}")
         plt.tight_layout()
         f.savefig(outfile)
 
-    return ppg.MultiFileGeneratingJob(outfile, __plot).depends_on(dependencies)
+    return MultiFileGeneratingJob(outfile, __plot).depends_on(dependencies)
 
 
 def plot_reads_for_lanes(

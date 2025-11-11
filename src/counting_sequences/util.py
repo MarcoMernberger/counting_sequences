@@ -1,6 +1,7 @@
 import gzip
 import subprocess
-import pypipegraph as ppg
+
+# import pypipegraph as ppg
 import pandas as pd
 from gzip import GzipFile
 from typing import BinaryIO, Union
@@ -57,11 +58,17 @@ def read_fastq_iterator(file_object: Union[BinaryIO, GzipFile]):
 
 def count_raw_input_reads(gz_filename1):
     if gz_filename1.endswith(".gz"):
-        p1 = subprocess.Popen(["gunzip", "-c", gz_filename1], stdout=subprocess.PIPE)
-        p2 = subprocess.Popen(["wc", "-l"], stdin=p1.stdout, stdout=subprocess.PIPE)
+        p1 = subprocess.Popen(
+            ["gunzip", "-c", gz_filename1], stdout=subprocess.PIPE
+        )
+        p2 = subprocess.Popen(
+            ["wc", "-l"], stdin=p1.stdout, stdout=subprocess.PIPE
+        )
         x = int(p2.communicate()[0][:-1]) / 4
     else:
-        p2 = subprocess.Popen(["wc", "-l", gz_filename1], stdout=subprocess.PIPE)
+        p2 = subprocess.Popen(
+            ["wc", "-l", gz_filename1], stdout=subprocess.PIPE
+        )
         t = p2.communicate()[0]
         try:
             x = int(t.split()[0])
@@ -114,3 +121,7 @@ def get_sequence_df_from_excel_file(
 ) -> DataFrame:
     """Reads a table from excel file with a given sheet name"""
     return pd.read_excel(sequence_file_path, sheet_name=sheet_name)
+
+
+def identity(something):
+    return something

@@ -9,7 +9,6 @@ from pathlib import Path
 from .util import read_fastq_iterator, get_fastq_iterator, reverse_complement
 from typing import Callable, List, Union, Optional
 from pypipegraph import Job
-from mbf.align.fastq2 import iterate_fastq
 from mbf.align import Sample
 
 
@@ -18,7 +17,7 @@ AdapterMatch = collections.namedtuple(
 )
 
 
-class Paired_Filtered_Trimmed_From_Job(mbf.align.fastq2.Straight):
+class Paired_Filtered_Trimmed_From_Job(mbf.align.fastq.Straight):
     """Filter reads with a callback func that takes seq1,qual1, name1,
     seq2, qual2, name2 and returns truncated reads/qualities
     """
@@ -65,7 +64,7 @@ class Paired_Filtered_Trimmed_From_Job(mbf.align.fastq2.Straight):
         read_creator="fastq",
     ):
         if read_creator == "fastq":
-            our_iter = iterate_fastq
+            our_iter = read_fastq_iterator
         else:
             raise ValueError("Invalid read creator")  # pragma: no cover
         counter = 0
@@ -99,7 +98,7 @@ class Paired_Filtered_Trimmed_From_Job(mbf.align.fastq2.Straight):
         """This allows to see both mate pairs and select one of them"""
 
         if read_creator == "fastq":
-            our_iter = iterate_fastq
+            our_iter = read_fastq_iterator
         else:
             raise ValueError("Invalid read creator")  # pragma: no cover
         counter = 0
@@ -138,7 +137,9 @@ class Paired_Filtered_Trimmed_From_Job(mbf.align.fastq2.Straight):
             with log_file.open("w") as outp:
                 total, found = 0, 0
                 # for inp in [r1, r2]:
-                for tup in zip(iterate_fastq(r1, False), iterate_fastq(r2, False)):
+                for tup in zip(
+                    read_fastq_iterator(r1, False), read_fastq_iterator(r2, False)
+                ):
                     seq1, _, _ = tup[0]
                     seq2, _, _ = tup[1]
 
