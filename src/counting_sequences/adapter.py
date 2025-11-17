@@ -1,4 +1,4 @@
-import pypipegraph as ppg
+# import pypipegraph as ppg
 import mbf
 import mbf.genomes
 import collections
@@ -8,7 +8,7 @@ import pandas as pd
 from pathlib import Path
 from .util import read_fastq_iterator, get_fastq_iterator, reverse_complement
 from typing import Callable, List, Union, Optional
-from pypipegraph import Job
+from pypipegraph import Job, ParameterInvariant, FileGeneratingJob, AttributeLoadingJob
 from mbf.align import Sample
 
 
@@ -48,7 +48,7 @@ class Paired_Filtered_Trimmed_From_Job(mbf.align.fastq.Straight):
     def get_dependencies(self, output_filenames):
         return [
             self.generate_adapters_for_trimming(),
-            ppg.ParameterInvariant(
+            ParameterInvariant(
                 f"{self.name}_params",
                 [self.exon, self.sampling, self.threshold, self.wt],
             ),
@@ -193,7 +193,7 @@ class Paired_Filtered_Trimmed_From_Job(mbf.align.fastq.Straight):
                 outp.write(f"Estimated reverse adapter freqency = {freq}\n")
                 outp.write(f"{forward_adapter}\n{reverse_adapter}")
 
-        return ppg.FileGeneratingJob(self.log_file, check).depends_on(self.dependencies)
+        return FileGeneratingJob(self.log_file, check).depends_on(self.dependencies)
 
     def set_adapter_matcher(self):
         def __load():
@@ -206,7 +206,7 @@ class Paired_Filtered_Trimmed_From_Job(mbf.align.fastq.Straight):
             )
             return adapter_matcher.filter()
 
-        return ppg.AttributeLoadingJob(
+        return AttributeLoadingJob(
             f"{self.name}_load", self, "filter_func", __load
         ).depends_on(self.generate_adapters_for_trimming())
 
@@ -587,7 +587,7 @@ class CutadaptMatch:
             df = pd.DataFrame(to_df)
             df.to_csv(output_file, sep="\t", index=False)
 
-        return ppg.FileGeneratingJob(outfile, __dump).depends_on(dependencies)
+        return FileGeneratingJob(outfile, __dump).depends_on(dependencies)
 
     @staticmethod
     def count_most_common_sequences(
@@ -655,12 +655,12 @@ class CutadaptMatch:
             df = df.sort_values("Count", ascending=False)
             df.to_csv(output_file, sep="\t", index=False)
 
-        pj = ppg.ParameterInvariant(
+        pj = ParameterInvariant(
             f"most_common_{str(outfile)}",
             [index, max, str(output_file), str(r1), str(r2)],
         )
         return (
-            ppg.FileGeneratingJob(outfile, __dump)
+            FileGeneratingJob(outfile, __dump)
             .depends_on(dependencies)
             .depends_on(pj)
         )

@@ -7,7 +7,7 @@ from gzip import GzipFile
 from typing import BinaryIO, Union
 from pathlib import Path
 from typing import List, Callable
-from pypipegraph import Job
+from pypipegraph import Job, FileGeneratingJob
 from mbf.align import Sample
 from pandas import DataFrame
 
@@ -91,7 +91,7 @@ def get_reads_for_lanes_df(
         df = df_calc_func()
         df.to_csv(outfile, index=False, sep="\t")
 
-    return ppg.FileGeneratingJob(outfile, __dump).depends_on(dependencies)
+    return FileGeneratingJob(outfile, __dump).depends_on(dependencies)
 
 
 def get_reads_for_lanes_callable(
