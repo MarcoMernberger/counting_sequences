@@ -43,7 +43,7 @@ def read_fastq_iterator(file_object: Union[BinaryIO, GzipFile]):
     """
     row1 = file_object.readline().decode()
     row2 = file_object.readline().decode()
-    row3 = file_object.readline().decode()
+    _ = file_object.readline().decode()
     row4 = file_object.readline().decode()
     while row1:
         seq = row2[:-1]

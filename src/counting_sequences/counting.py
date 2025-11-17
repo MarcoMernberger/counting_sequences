@@ -557,9 +557,9 @@ class SequenceCounter:
             if trim_function is None:
                 trim_function = identity
             for _, row in df_read_counter.iterrows():
-                if isinstance(row["Sequence"], float):
+                if isinstance(row[self.sequence_column], float):
                     continue
-                seq1 = str(row["Sequence"])
+                seq1 = str(row[self.sequence_column])
                 count = row["Count"]
                 seq = trim_function(seq1)
                 if len(seq) == 0:
@@ -705,8 +705,7 @@ class SequenceCounter:
 
         # get the counted reads from the fastq
         read_counter_file = (
-            self.result_dir
-            / f"{raw_lane.name}_{self.name}_all_reads_trimmed.tsv"
+            self.result_dir / f"{raw_lane.name}_{self.name}_all_reads.tsv"
         )
         df_read_counter = pd.read_csv(read_counter_file, sep="\t")
         counter = collections.Counter(
@@ -1014,6 +1013,44 @@ class SequenceCounter2(SequenceCounter):
         df_counter = pd.DataFrame(counter_to_df)
         return df_counter
 
+    def count_fastq_single(self, raw_lane: Sample) -> DataFrame:
+        """
+        count_fastq counts all occuring sequences in a fastq file.
+
+        Very basic counter to count all occuring sequences in a fastq file.
+        In addition, the reads are trimmed in an equal manner to the predefined
+        sequences to speed up counting by eliminating the need for substring
+        matching.
+
+        Parameters
+        ----------
+        raw_lane : Sample
+            Sample to count.
+
+        Returns
+        -------
+        DataFrame
+            A DataFrame containing the trimmed sequences and corresponding counts.
+        """
+        counter_to_df: Dict[str, List] = {
+            "R1": [],
+            "Count": [],
+            "R1 Name": [],
+        }
+        counter: Dict[str, int] = collections.Counter()
+        read_iterator = get_fastq_iterator(False)
+        examples = {}
+        for fragment in read_iterator(raw_lane.get_aligner_input_filenames()):
+            key = fragment.Read1.Sequence
+            counter[key] += 1
+            examples[key] = fragment.Read1.Name
+        for seqs in counter:
+            counter_to_df["R1"].append(seqs)
+            counter_to_df["Count"].append(counter[seqs])
+            counter_to_df["R1 Name"].append(examples[seqs])
+        df_counter = pd.DataFrame(counter_to_df)
+        return df_counter
+
     def _write_fastq_count_callable(self, raw_lane: Sample) -> Callable:
         """
         write_fastq_count counts all occuring sequences in a fastq file.
@@ -1221,10 +1258,18 @@ class SequenceCounter2(SequenceCounter):
 
         # get the counted reads from the fastq
         read_counter_file = (
-            self.result_dir
-            / f"{raw_lane.name}_{self.name}_all_reads_trimmed.tsv"
+            self.result_dir / f"{raw_lane.name}_{self.name}_all_reads.tsv"
         )
         df_read_counter = pd.read_csv(read_counter_file, sep="\t")
+        if "R1" in df_read_counter.columns and "R2" in df_read_counter.columns:
+            df_read_counter.Sequence = (
+                df_read_counter.R1 + "_" + df_read_counter.R2
+            )
+        elif "R1" in df_read_counter.columns:
+            df_read_counter.Sequence = df_read_counter.R1.copy()
+        else:
+            raise ValueError("R1 not in table")
+        print(df_read_counter.columns)
         counter = collections.Counter(
             pd.Series(
                 df_read_counter.Count.values, index=df_read_counter.Sequence
@@ -1235,7 +1280,7 @@ class SequenceCounter2(SequenceCounter):
         df_sequence_df = pd.read_csv(
             self.result_dir / f"{self.name}_predefined_sequences.tsv", sep="\t"
         )
-        counts = [counter[seq] for seq in df_sequence_df["Sequence"]]
+        counts = [counter[seq] for seq in df_sequence_df[self.sequence_column]]
         result = df_sequence_df.copy()
         result["Read Count"] = counts
         result["Frequency"] = result["Read Count"] / total_counts
@@ -1257,7 +1302,7 @@ class SequenceCounter2(SequenceCounter):
         result = result.sort_values(self.id_column)
         result.index = result[self.id_column]
         # now the non_matched
-        for seq in result["Sequence"].unique():
+        for seq in result[self.sequence_column].unique():
             del counter[seq]
         to_df = {
             self.id_column: [],
@@ -1336,7 +1381,7 @@ class SequenceCounter2(SequenceCounter):
             .depends_on(
                 FunctionInvariant(f"{self.name}_count_fastq", self.count_fastq)
             )
-            .depends_on(self.write_fastq_count_trimmed(raw_lane))
+            # .depends_on(self.write_fastq_count_trimmed(raw_lane))
             .depends_on(self.write_fastq_count(raw_lane))
             .depends_on(self.dependencies)
             .depends_on(self.write_predefined_sequences())
